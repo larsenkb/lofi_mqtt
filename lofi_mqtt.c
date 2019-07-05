@@ -128,8 +128,8 @@ int remote = 0;
 #endif
 
 struct	mosquitto	*mosq = NULL;
-char	*mosq_topic = "/testtopic";
-char	*mosq_host = "localhost";
+//char	*mosq_topic = "/testtopic";
+char	*mosq_host = "odp";
 int		mosq_port = 1883;
 int		mosq_keepalive = 60;
 bool	mosq_clean_session = true;
@@ -719,7 +719,7 @@ int parse_payload( uint8_t *payload )
 	}
 
 	if (longStr) {
-//		printf("%s %s\n", topic, topicVal);
+		printf("%s %s\n", topic, topicVal);
 		mosquitto_publish(mosq, NULL, topic, strlen(topicVal), topicVal, 0, 0);
 #if 0
 		printf("%s", tbuf);

@@ -134,6 +134,42 @@ int		mosq_port = 1883;
 int		mosq_keepalive = 60;
 bool	mosq_clean_session = true;
 
+char *nodeMap[] = {
+	"node0",
+	"node1",
+	"doorFront",
+	"node3",
+	"node4",
+	"doorGarageN",
+	"node6",
+	"node7",
+	"doorHall",
+	"node9",
+	"node10",
+	"node11",
+	"node12",
+	"node13",
+	"doorGarage",
+	"node15",
+	"node16",
+	"doorGarageS",
+	"node18",
+	"node19",
+	"node20",
+	"node21",
+	"node22",
+	"node23",
+	"node24",
+	"node25",
+	"node26",
+	"node27",
+	"node28",
+	"node29"
+};
+int maxNodes = sizeof(nodeMap)/sizeof(char*);
+
+
+
 //************  Forward Declarations
 int parse_payload( uint8_t *payload );
 void spiSetup( int speed );
@@ -304,6 +340,7 @@ int main(int argc, char *argv[])
 
 	pgmName = basename(argv[0]);
 
+//	printf("maxNodes: %d\n", maxNodes); fflush(stdout);
 #if 0
 	if (strcmp(pgmName, "lofi_rmt") == 0)
 		remote = 1;
@@ -608,8 +645,8 @@ int parse_payload( uint8_t *payload )
 	clock_gettime(CLOCK_REALTIME, &ts);
 	nodeId = payload[0];
 
-	if (nodeId >= MAX_NODES) {
-		if (verbose) fprintf(stderr, "Bad nodeId: %d\n", nodeId);
+	if (nodeId < 1 || nodeId >= maxNodes) {
+		fprintf(stderr, "Bad nodeId: %d\n", nodeId); fflush(stderr);
 		return -1;
 	}
 
@@ -620,7 +657,8 @@ int parse_payload( uint8_t *payload )
 		} else {
 			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "Id: %2d", nodeId);
 		}
-		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/lofi/node%d", nodeId);
+		//topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/lofi/node%d", nodeId);
+		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/lofi/%s", nodeMap[nodeId]);
 	}
 
 	if (printPayload) {

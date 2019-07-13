@@ -1,5 +1,5 @@
 //
-// lofi_rx.c:
+// lofi_mqtt.c:
 //	Receive and process lofi security packets.
 //	on odroid or Raspberry Pi
 //	on odroid spi not working correctly so I added a bit-bang spi

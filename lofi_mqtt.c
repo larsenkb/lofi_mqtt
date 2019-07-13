@@ -154,7 +154,7 @@ char *nodeMap[] = {
 	"node16",
 	"doorGarageS",
 	"doorSliding",
-	"node19",
+	"doorBack",
 	"node20",
 	"node21",
 	"node22",

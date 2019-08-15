@@ -135,36 +135,36 @@ int		mosq_keepalive = 60;
 bool	mosq_clean_session = true;
 
 char *nodeMap[] = {
-	"node0",
-	"node1",
-	"doorFront",
-	"node3",
-	"node4",
-	"doorGarageN",
-	"node6",
-	"node7",
-	"doorHall",
-	"node9",
-	"node10",
-	"node11",
-	"node12",
-	"node13",
-	"doorGarage",
-	"node15",
-	"node16",
-	"doorGarageS",
-	"doorSliding",
-	"doorBack",
-	"node20",
-	"node21",
-	"node22",
-	"node23",
-	"node24",
-	"node25",
-	"node26",
-	"node27",
-	"node28",
-	"node29"
+	"node/0",
+	"node/1",
+	"door/Front",
+	"node/3",
+	"node/4",
+	"door/GarageN",
+	"node/6",
+	"node/7",
+	"door/Hall",
+	"node/9",
+	"node/10",
+	"node/11",
+	"node/12",
+	"node/13",
+	"door/Garage",
+	"node/15",
+	"node/16",
+	"door/GarageS",
+	"door/Sliding",
+	"door/Back",
+	"node/20",
+	"node/21",
+	"node/22",
+	"node/23",
+	"node/24",
+	"node/25",
+	"node/26",
+	"node/27",
+	"node/28",
+	"node/29"
 };
 int maxNodes = sizeof(nodeMap)/sizeof(char*);
 
@@ -664,6 +664,8 @@ int parse_payload( uint8_t *payload )
 	if (printPayload) {
 		tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, " Payload: %02X %02X %02X",
 			payload[0], payload[1], payload[2]);
+		printf("%s\n", tbuf);
+		fflush(stdout);
 	}
 
 	for (i = 1; i < PAYLOAD_LEN; ) {

@@ -379,8 +379,9 @@ int main(int argc, char *argv[])
 			printTime = 1;
 			break;
 		case 'H':
-			strncpy(mosq_host, optarg, 255);
-			mosq_host[255] = '\0';
+			mosq_host = optarg;
+			//strncpy(mosq_host, optarg, 255);
+			//mosq_host[255] = '\0';
 			break;
 		case 'P':
 			mosq_port = atoi(optarg);

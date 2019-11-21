@@ -129,7 +129,7 @@ int remote = 0;
 
 struct	mosquitto	*mosq = NULL;
 //char	*mosq_topic = "/testtopic";
-char	*mosq_host = "odp";
+char	*mosq_host = "omv";
 int		mosq_port = 1883;
 int		mosq_keepalive = 60;
 bool	mosq_clean_session = true;

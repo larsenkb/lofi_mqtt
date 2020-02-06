@@ -137,7 +137,7 @@ bool	mosq_clean_session = true;
 char *nodeMap[] = {
 	"node/0",
 	"node/1",
-	"door/Front",
+	"node/2",
 	"node/3",
 	"node/4",
 	"door/GarageN",
@@ -157,7 +157,7 @@ char *nodeMap[] = {
 	"door/Back",
 	"node/20",
 	"node/21",
-	"node/22",
+	"door/Front",
 	"node/23",
 	"node/24",
 	"node/25",

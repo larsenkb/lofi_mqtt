@@ -22,7 +22,7 @@
 #include <errno.h>
 #include <wiringPi.h>
 #include <wiringPiSPI.h>
-#include <mosquitto.h>
+#include <mosquitto.h>   // sudo apt install libmosquitto-dev
 
 
 #include <sys/socket.h>

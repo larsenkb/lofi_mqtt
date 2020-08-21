@@ -33,7 +33,7 @@
 #include <netdb.h>
 
 
-#define NRFIRQ			4
+#define NRFIRQ			5
 #define nrfCSN			10
 #define nrfCE			6
 #define SPI_BIT_BANG	1

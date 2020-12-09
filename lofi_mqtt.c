@@ -140,7 +140,7 @@ char *nodeMap[] = {
 	"node/2",
 	"node/3",
 	"node/4",
-	"door/GarageN",
+	"door/5",
 	"node/6",
 	"node/7",
 	"door/Hall",
@@ -162,7 +162,7 @@ char *nodeMap[] = {
 	"window/officeS",
 	"window/masterW",
 	"window/masterE",
-	"node/27",
+	"node/GarageN",
 	"node/28",
 	"node/29"
 };

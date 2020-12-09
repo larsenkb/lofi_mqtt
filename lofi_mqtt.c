@@ -162,7 +162,7 @@ char *nodeMap[] = {
 	"window/officeS",
 	"window/masterW",
 	"window/masterE",
-	"node/GarageN",
+	"door/GarageN",
 	"node/28",
 	"node/29"
 };
@@ -659,7 +659,7 @@ int parse_payload( uint8_t *payload )
 			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "Id: %2d", nodeId);
 		}
 		//topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/lofi/node%d", nodeId);
-		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/lofi/%s", nodeMap[nodeId]);
+		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "lofi/%s", nodeMap[nodeId]);
 	}
 
 	if (printPayload) {

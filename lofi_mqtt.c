@@ -45,7 +45,7 @@
 
 #define PAYLOAD_LEN		3
 
-#define MAX_NODES		20
+//#define MAX_NODES		20
 
 #define handle_error(msg) \
 	do { perror(msg); /*exit(EXIT_FAILURE);*/ } while (0)
@@ -164,7 +164,17 @@ char *nodeMap[] = {
 	"window/masterE",
 	"door/GarageN",
 	"node/28",
-	"node/29"
+	"node/29",
+	"node/30",
+	"node/31",
+	"node/32",
+	"node/33",
+	"node/34",
+	"node/35",
+	"node/36",
+	"node/37",
+	"node/38",
+	"node/99"
 };
 int maxNodes = sizeof(nodeMap)/sizeof(char*);
 

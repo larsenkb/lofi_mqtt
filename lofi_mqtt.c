@@ -251,7 +251,8 @@ void nrfIntrHandler(void)
 
 	payLen = nrfReadRxPayloadLen();
 	if (payLen != PAYLOAD_LEN) {
-		if (verbose) fprintf(stderr, "PAYLOAD LEN: %d\n", payLen);
+//		if (verbose) fprintf(stderr, "PAYLOAD LEN: %d\n", payLen);
+		fprintf(stderr, "PAYLOAD LEN: %d\n", payLen);
 	}
 
 	nrfRead( payload, payLen );
@@ -480,10 +481,10 @@ int main(int argc, char *argv[])
 	// Reset STATUS
 	nrfRegWrite( NRF_STATUS, 0x70 );
 
-	nrfRegWrite( NRF_EN_RXADDR, 3 );
+	nrfRegWrite( NRF_EN_RXADDR, 1 ); //3);
 	nrfRegWrite( NRF_RX_PW_P0, PAYLOAD_LEN );
 #if 1
-	nrfRegWrite( NRF_RX_PW_P1, PAYLOAD_LEN );
+	nrfRegWrite( NRF_RX_PW_P1, 0 ); //PAYLOAD_LEN );
 	nrfRegWrite( NRF_RX_PW_P2, 0 );
 	nrfRegWrite( NRF_RX_PW_P3, 0 );
 	nrfRegWrite( NRF_RX_PW_P4, 0 );

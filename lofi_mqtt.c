@@ -92,7 +92,8 @@ typedef enum {
 	SENID_SW2,
 	SENID_VCC,
 	SENID_TEMP,
-	SENID_CTR
+	SENID_CTR,
+	SENID_REV
 } senId_t;
 
 
@@ -140,29 +141,29 @@ char *nodeMap[] = {
 	"node/2",
 	"node/3",
 	"node/4",
-	"door/5",
+	"node/5",			// node/5
 	"node/6",
 	"node/7",
-	"door/Hall",
+	"door/Hall",		// node/8
 	"node/9",
 	"node/10",
 	"node/11",
 	"node/12",
 	"node/13",
-	"door/Garage",
+	"door/Garage",		// node/14
 	"node/15",
 	"node/16",
-	"door/GarageS",
-	"door/Sliding",
-	"door/Back",
+	"door/GarageS",		// node/17
+	"door/Sliding",		// node/18
+	"door/Back",		// node/19
 	"node/20",
-	"window/officeN",
-	"door/Front",
+	"window/officeN",	// node/21
+	"door/Front",		// node/22
 	"node/23",
-	"window/officeS",
-	"window/masterW",
-	"window/masterE",
-	"door/GarageN",
+	"window/officeS",	// node/24
+	"window/masterW",	// node/25
+	"window/masterE",	// node/26
+	"door/GarageN",		// node/27
 	"node/28",
 	"node/29",
 	"node/30",
@@ -687,6 +688,22 @@ int parse_payload( uint8_t *payload )
 		sensorId = (payload[i]>>4) & 0xF;
 
 		switch (sensorId) {
+		case SENID_REV:
+			seq = (payload[i] >> 2) & 0x3;
+			if (longStr && printSeq) {
+				tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Seq: %1d", seq);
+			}
+			val = payload[i++] & 0x03;
+			val <<= 8;
+			val += payload[i++];
+			if (longStr) {
+				tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Rev: %4d", val);
+				topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/rev");
+				sprintf(topicVal, "%d", val);
+			} else {
+				printf("%d NodeId: %2d  Rev: %4d\n", (unsigned int)ts.tv_sec, nodeId, val);
+			}
+			break;
 		case SENID_CTR:
 			seq = (payload[i] >> 2) & 0x3;
 			if (longStr && printSeq) {

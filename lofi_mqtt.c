@@ -36,7 +36,9 @@
 #define NRFIRQ			5
 #define nrfCSN			10
 #define nrfCE			6
+
 #define SPI_BIT_BANG	1
+
 #if SPI_BIT_BANG
 #define MOSI_PIN		12
 #define MISO_PIN		13
@@ -45,7 +47,6 @@
 
 #define PAYLOAD_LEN		3
 
-//#define MAX_NODES		20
 
 #define handle_error(msg) \
 	do { perror(msg); /*exit(EXIT_FAILURE);*/ } while (0)
@@ -104,7 +105,7 @@ typedef enum {
 } speed_t;
 
 //unsigned char payload[PAYLOAD_LEN];
-int longStr = 0;
+int mqttStr = 0;
 int printPayload = 0;
 int printSeq = 0;
 int en_shockburst = 1;
@@ -115,21 +116,13 @@ int maxNodeRcvd = 0;
 int verbose = 0;
 int printTime = 0;
 int nrfIrq = NRFIRQ;
-//static int mainThreadPid;
+
 #if !SPI_BIT_BANG
 static int spiFd;
 #endif
 
-#if 0
-char rmt_host[256] = "odp";
-int rmt_port = 9900;
-int sockFd;
-int connected = FALSE;
-int remote = 0;
-#endif
 
 struct	mosquitto	*mosq = NULL;
-//char	*mosq_topic = "/testtopic";
 char	*mosq_host = "omv";
 int		mosq_port = 1883;
 int		mosq_keepalive = 60;
@@ -154,7 +147,7 @@ char *nodeMap[] = {
 	"node/15",
 	"node/16",
 	"door/GarageS",		// node/17
-	"door/Sliding",		// node/18
+	"node/18",
 	"door/Back",		// node/19
 	"node/20",
 	"window/officeN",	// node/21
@@ -163,12 +156,12 @@ char *nodeMap[] = {
 	"window/officeS",	// node/24
 	"window/masterW",	// node/25
 	"window/masterE",	// node/26
-	"door/27",		// node/27
+	"node/27",			// node/27
 	"node/28",
 	"node/29",
 	"node/30",
 	"node/31",
-	"node/32",
+	"door/Sliding",		// node/32",
 	"node/33",
 	"node/34",
 	"node/35",
@@ -214,27 +207,7 @@ void mosq_log_callback(struct mosquitto *mosq, void *userdata, int level, const 
 	}
 }
 
-
 #if 0
-int main(int argc, char *argv[])
-{
-	int i = -10;
-	char *buf = malloc(64);
-
-
-    // main loop
-	for (int i = 0; i < 10; i++) {
-		sprintf(buf, "i=%i", i);
-		int snd = mosquitto_publish(mosq, NULL, topic, strlen(buf), buf, 0, 0);
-		if (snd != 0) 
-			printf("mqtt_send error=%i\n", snd);
-		usleep(100000);
-	}
-	return 0;
-}
-#endif
-
-
 //
 // error - wrapper for perror
 //
@@ -242,22 +215,29 @@ void error(char *msg) {
 	perror(msg);
 //	exit(0);
 }
-
+#endif
 
 void nrfIntrHandler(void)
 {
 	uint8_t pipeNum __attribute__ ((unused));
 	uint8_t payLen __attribute__ ((unused));
 	unsigned char payload[PAYLOAD_LEN];
+	unsigned char prevPld[PAYLOAD_LEN];
 
 	payLen = nrfReadRxPayloadLen();
 	if (payLen != PAYLOAD_LEN) {
-//		if (verbose) fprintf(stderr, "PAYLOAD LEN: %d\n", payLen);
 		fprintf(stderr, "PAYLOAD LEN: %d\n", payLen);
+		fflush(stderr);
 	}
 
 	nrfRead( payload, payLen );
-	parse_payload( payload );
+//	if (memcmp(payload, prevPld, 3) != 0) {
+		parse_payload( payload );
+		memcpy(prevPld, payload, 3);
+//	} else {
+//		fprintf(stderr, "duplicate\n");
+//		fflush(stderr);
+//	}
 }
 
 
@@ -266,8 +246,6 @@ void sig_handler( int sig )
 	if (sig == SIGINT) {
 		printf("\nPowering down receiver...\n");
     	digitalWrite(nrfCE, LOW);
-//		printf("Closing socket\n");
-//		close(sockFd);
 		printf("Disconnecting from MQTT broker\n");
 		mosquitto_disconnect(mosq);
 		mosquitto_lib_cleanup();
@@ -282,7 +260,7 @@ int Usage(void)
 	fprintf(stderr, "  -h	this message\n");
 	fprintf(stderr, "  -v	verbose\n");
 	fprintf(stderr, "  -W	disable shockBurst mode\n");
-	fprintf(stderr, "  -l	print output in long string format\n");
+	fprintf(stderr, "  -m	print output in MQTT format\n");
 	fprintf(stderr, "  -p	print out payload in hex\n");
 	fprintf(stderr, "  -s	set receive RF bit rate to 1M (default is 2M)\n");
 	fprintf(stderr, "  -S	set receive RF bit rate to 250K (default is 2M)\n");
@@ -297,49 +275,6 @@ int Usage(void)
 	return 0;
 }
 
-#if 0
-int tcpSend(const char *msg)
-{
-	int n;
-	struct sockaddr_in serveraddr;
-	struct hostent *server;
-
-	if (!connected) {
-		sockFd = socket(AF_INET, SOCK_STREAM, 0);
-		if (sockFd < 0) {
-			fprintf(stderr, "cannot open socket\n");
-			return FALSE;
-		}
-	
-		server = gethostbyname(rmt_host);
-		if (server == NULL) {
-			fprintf(stderr, "ERROR, no such host as %s\n", rmt_host);
-			return FALSE;
-		}
-
-		bzero((char*)&serveraddr, sizeof(serveraddr));
-		serveraddr.sin_family = AF_INET;
-		bcopy((char*)server->h_addr, (char*)&serveraddr.sin_addr.s_addr, server->h_length);
-		serveraddr.sin_port = htons(rmt_port);
-
-		if (connect(sockFd, (struct sockaddr *)&serveraddr, sizeof(serveraddr)) < 0) {
-			fprintf(stderr, "ERROR connecting\n");
-			return FALSE;
-		}
-		connected = TRUE;
-	}
-
-	n = write(sockFd, msg, strlen(msg));
-	if (n < 0) {
-		fprintf(stderr, "ERROR writing to socket\n");
-		close(sockFd);
-		sockFd = -1;
-		connected = FALSE;
-		return FALSE;
-	}
-	return TRUE;
-}
-#endif
 
 //
 // main
@@ -352,22 +287,14 @@ int main(int argc, char *argv[])
 
 	pgmName = basename(argv[0]);
 
-//	printf("maxNodes: %d\n", maxNodes); fflush(stdout);
-#if 0
-	if (strcmp(pgmName, "lofi_rmt") == 0)
-		remote = 1;
-	else
-		remote = 0;
-#endif
-
-	while ((opt = getopt(argc, argv, "hvWlpsStqc:x:f:g:P:H:")) != -1) {
+	while ((opt = getopt(argc, argv, "hvWmpsStqc:x:f:g:P:H:")) != -1) {
 		switch (opt) {
 		case 'h':
 			Usage();
 			exit(0);
 			break;
-		case 'l':
-			longStr = 1;
+		case 'm':
+			mqttStr = 1;
 			break;
 		case 'W':
 			en_shockburst = 0;
@@ -392,8 +319,6 @@ int main(int argc, char *argv[])
 			break;
 		case 'H':
 			mosq_host = optarg;
-			//strncpy(mosq_host, optarg, 255);
-			//mosq_host[255] = '\0';
 			break;
 		case 'P':
 			mosq_port = atoi(optarg);
@@ -410,13 +335,6 @@ int main(int argc, char *argv[])
 			break;
 		}
 	}
-
-#if 0
-	if (remote) {
-		printf("PORT: %d\n", rmt_port);
-		printf("HOST: %s\n", rmt_host);
-	}
-#endif
 
 //	atexit(printStats);
 	if (signal(SIGINT, sig_handler) == SIG_ERR)
@@ -535,99 +453,12 @@ int main(int argc, char *argv[])
 
 //	nrfRegWrite( NRF_EN_RXADDR, 3 );
 
-#if 0
-	sigemptyset(&mask);
-	sigaddset(&mask, SIGQUIT);
-	sigaddset(&mask, SIGUSR1);
-
-	// Block signals so that they aren't handled
-	// according to their default dispositions
-	if (sigprocmask(SIG_BLOCK, &mask, NULL) == -1)
-		handle_error("sigprocmask");
-
-	sfd = signalfd(-1, &mask, 0);
-
-	mainThreadPid = pthread_self();
-
-	if (sfd == -1)
-		handle_error("signalfd");
-#endif
 
 	for (;;) {
 		delay(10000);
-#if 0
-		s = read(sfd, &fdsi, sizeof(struct signalfd_siginfo));
-		if (s != sizeof(struct signalfd_siginfo)) {
-			handle_error("read");
-		}
-printf("s = %d\n", s); fflush(stdout);
-
-		if (fdsi.ssi_signo == SIGUSR1) {
-			printf("Got SIGUSR1\n");
-			fflush(stdout);
-		} else if (fdsi.ssi_signo == SIGQUIT) {
-			printf("Got SIGQUIT\n"); fflush(stdout);
-		} else {
-			printf("Read unexpected signal\n"); fflush(stdout);
-		}
-#endif
 	}
-#if 0
-	for (;;) {
-
-#if 0
-		while (nrfAvailable(0)) {
-			nrfRead( payload, 8 );
-			parse_payload( payload );
-		}
-#endif
-		usleep(50000);
-	}
-#endif
-
-#if 0
-#if 1
-	uint8_t nrfConfigReg;
-	nrfConfigReg = nrfRegRead(0);
-	printf("CONFIG: %02X\n", nrfConfigReg);
-#else
-	spiBuf[0] = 0;
-	spiBuf[1] = 0;
-
-	rv = spiXfer(spiBuf, 2);
-	if (rv < 0) {
-		printf("spiXfer error\n");
-	}
-	printf("[0]:%02X  [1]:%02X\n", spiBuf[0], spiBuf[1]);
-#endif
-#endif
 
 	return 0;
-
-
-#if 0
-
-	if (sfd == -1)
-		handle_error("signalfd");
-
-	for (;;) {
-		s = read(sfd, &fdsi, sizeof(struct signalfd_siginfo));
-		if (s != sizeof(struct signalfd_siginfo)) {
-			handle_error("read");
-		}
-printf("s = %d\n", s); fflush(stdout);
-
-		if (fdsi.ssi_signo == SIGUSR1) {
-			printf("Got SIGUSR1\n");
-			fflush(stdout);
-		} else if (fdsi.ssi_signo == SIGQUIT) {
-			printf("Got SIGQUIT\n"); fflush(stdout);
-		} else {
-			printf("Read unexpected signal\n"); fflush(stdout);
-		}
-	}
-#endif
-  return 0;
 }
 
 int showPayload( uint8_t *payload )
@@ -639,7 +470,7 @@ int showPayload( uint8_t *payload )
 int parse_payload( uint8_t *payload )
 {
 	struct timespec ts;
-	int i;
+	//int i;
 	unsigned short val;
 	uint8_t	sensorId;
 	uint8_t nodeId;
@@ -656,6 +487,7 @@ int parse_payload( uint8_t *payload )
 	topic[0] = '\0';
 
 	clock_gettime(CLOCK_REALTIME, &ts);
+
 	nodeId = payload[0];
 
 	if (nodeId < 1 || nodeId >= maxNodes) {
@@ -663,145 +495,101 @@ int parse_payload( uint8_t *payload )
 		return -1;
 	}
 
+	topicIdx = snprintf(&topic[topicIdx], 127-topicIdx, "lofi/%s", nodeMap[nodeId]);
 
-	if (longStr) {
-		if (printTime) {
-			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "%d Id: %2d", (int)ts.tv_sec, nodeId);
-		} else {
-			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "Id: %2d", nodeId);
-		}
-		//topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/lofi/node%d", nodeId);
-		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "lofi/%s", nodeMap[nodeId]);
-	}
+	if (printTime)
+		tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "%d  ", (int)ts.tv_sec);
 
 	if (printPayload) {
-		tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, " Payload: %02X %02X %02X",
+		tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "Payload: %02X %02X %02X",
 			payload[0], payload[1], payload[2]);
 		printf("%s\n", tbuf);
 		fflush(stdout);
+		return 0;
 	}
 
-	for (i = 1; i < PAYLOAD_LEN; ) {
+	if (!mqttStr) {
+		tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "Id: %2d ", nodeId);
+	}
 
-		if (payload[i] == 0) break;
 
-		sensorId = (payload[i]>>4) & 0xF;
+	if (payload[1] == 0) {
+		printf("%s\n", tbuf);
+		fflush(stdout);
+		return -1;
+	}
 
-		switch (sensorId) {
-		case SENID_REV:
-			seq = (payload[i] >> 2) & 0x3;
-			if (longStr && printSeq) {
-				tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Seq: %1d", seq);
-			}
-			val = payload[i++] & 0x03;
-			val <<= 8;
-			val += payload[i++];
-			if (longStr) {
-				tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Rev: %4d", val);
-				topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/rev");
-				sprintf(topicVal, "%d", val);
-			} else {
-				printf("%d NodeId: %2d  Rev: %4d\n", (unsigned int)ts.tv_sec, nodeId, val);
-			}
-			break;
-		case SENID_CTR:
-			seq = (payload[i] >> 2) & 0x3;
-			if (longStr && printSeq) {
-				tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Seq: %1d", seq);
-			}
-			val = payload[i++] & 0x03;
-			val <<= 8;
-			val += payload[i++];
-			if (longStr) {
-				tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Ctr: %4d", val);
-				topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/ctr");
-				sprintf(topicVal, "%d", val);
-			} else {
-				printf("%d NodeId: %2d  Ctr: %4d\n", (unsigned int)ts.tv_sec, nodeId, val);
-			}
-			break;
-		case SENID_SW1:
-			seq = (payload[i] >> 2) & 0x3;
-			if (longStr) {
-				if (printSeq) {
-					tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Seq: %1d", seq);
-				}
-				tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  SW1: %s", (payload[i] & 0x02) ? "OPEN" : "SHUT");
-				topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/sw1");
-				sprintf(topicVal, (payload[i] & 0x02) ? "OPEN" : "SHUT");
-			} else {
-				printf("%d NodeId: %2d  SW1: %s", (unsigned int)ts.tv_sec, nodeId, (payload[i] & 0x02) ? " OPEN\n" : " SHUT\n");
-			}
-			i++;
-			break;
-		case SENID_SW2:
-			seq = (payload[i] >> 2) & 0x3;
-			if (longStr) {
-				if (printSeq) {
-					tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Seq: %1d", seq);
-				}
-				tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  SW2: %s", (payload[i] & 0x02) ? "OPEN" : "SHUT");
-				topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/sw2");
-				sprintf(topicVal, (payload[i] & 0x02) ? "OPEN" : "SHUT");
-			} else {
-				printf("%d NodeId: %2d  SW2: %s", (unsigned int)ts.tv_sec, nodeId, (payload[i] & 0x02) ? " OPEN\n" : " SHUT\n");
-			}
-			i++;
-			break;
-		case SENID_VCC:
-			seq = (payload[i] >> 2) & 0x3;
-			val = payload[i++] & 0x03;
-			val <<= 8;
-			val += payload[i++];
-			if (longStr) {
-				if (printSeq) {
-					tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Seq: %1d", seq);
-				}
-				tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Vcc: %4.2f",(1.1 * 1024.0)/(float)val);
-				topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/vcc");
-				sprintf(topicVal, "%4.2f", (1.1 * 1024.0)/(float)val);
-			} else {
-				printf("%d NodeId: %2d  Vcc: %4.2f\n", (unsigned int)ts.tv_sec, nodeId, (1.1 * 1024.0)/(float)val);
-			}
-			break;
-		case SENID_TEMP:
-			seq = (payload[i] >> 2) & 0x3;
-			val = payload[i++] & 0x03;
-			val <<= 8;
-			val += payload[i++];
-			if (longStr) {
-				if (printSeq) {
-					tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Seq: %1d", seq);
-				}
-				tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Temp: %4.2f",1.0 * (float)val - 260.0);
-				topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/temp");
-				sprintf(topicVal, "%4.2f", 1.0 * (float)val - 260.0);
-			} else {
-				printf("%d NodeId: %2d  Vcc: %4.2f\n", (unsigned int)ts.tv_sec, nodeId, 1.0 * (float)val - 260.0);
-			}
-			break;
-		default:
-			fprintf(stderr, "Bad SensorId: %d\n", sensorId);
-			return -1;
-			break;
+	sensorId = (payload[1]>>4) & 0xF;
+	seq = (payload[1] >> 2) & 0x3;
+
+	if (!mqttStr && printSeq) {
+		tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Seq: %1d", seq);
+	}
+
+	val = payload[1] & 0x03;
+	val <<= 8;
+	val += payload[2];
+
+	switch (sensorId) {
+	case SENID_REV:
+		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/rev");
+		sprintf(topicVal, "%d", val);
+		if (!mqttStr) {
+			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Rev: %4d", val);
 		}
+		break;
+	case SENID_CTR:
+		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/ctr");
+		sprintf(topicVal, "%d", val);
+		if (!mqttStr) {
+			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Ctr: %4d", val);
+		}
+		break;
+	case SENID_SW1:
+		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/sw1");
+		sprintf(topicVal, (payload[1] & 0x02) ? "OPEN" : "SHUT");
+		if (!mqttStr) {
+			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  SW1: %s", (payload[1] & 0x02) ? "OPEN" : "SHUT");
+			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, " %s", (payload[1] & 0x01) ? "PC" : "");
+		}
+		break;
+	case SENID_SW2:
+		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/sw2");
+		sprintf(topicVal, (payload[1] & 0x02) ? "OPEN" : "SHUT");
+		if (!mqttStr) {
+			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  SW2: %s", (payload[1] & 0x02) ? "OPEN" : "SHUT");
+		}
+		break;
+	case SENID_VCC:
+		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/vcc");
+		sprintf(topicVal, "%4.2f", (1.1 * 1024.0)/(float)val);
+		if (!mqttStr) {
+			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Vcc: %4.2f",(1.1 * 1024.0)/(float)val);
+		}
+		break;
+	case SENID_TEMP:
+		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/temp");
+		sprintf(topicVal, "%4.2f", 1.0 * (float)val - 260.0);
+		if (!mqttStr) {
+			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Temp: %4.2f",1.0 * (float)val - 260.0);
+		}
+		break;
+	default:
+		fprintf(stderr, "Bad SensorId: %d\n", sensorId);
+		fflush(stdout);
+		return -1;
 	}
 
-	if (longStr) {
-		printf("%s %s\n", topic, topicVal);
+	if (!mqttStr) {
+		printf("%s\n", tbuf);
+	} else {
 		mosquitto_publish(mosq, NULL, topic, strlen(topicVal), topicVal, 0, 0);
-#if 0
-		printf("%s", tbuf);
-		strcat(tbuf, "\n");
-		if (remote)
-			tcpSend(tbuf);
-		if (sbuf[0] != '\0') {
-			printf("%s", sbuf);
+		if (printTime) {
+			printf("%d  %s %s\n", (int)ts.tv_sec, topic, topicVal);
+		} else {
+			printf("%s %s\n", topic, topicVal);
 		}
-		printf("\n");
-#endif
-	} else
-		printf("\n");
+	}
 				
 	fflush(stdout);
 	return 0;

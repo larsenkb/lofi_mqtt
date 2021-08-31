@@ -129,39 +129,39 @@ int		mosq_keepalive = 60;
 bool	mosq_clean_session = true;
 
 char *nodeMap[] = {
-	"node/0",
-	"node/1",
-	"node/2",
-	"node/3",
-	"node/4",
-	"door/GarageN",			// node/5
-	"node/6",
+	"node/0",			// node/0, there never will be a node 0
+	"node/1",			// node/1, retired
+	"node/2",			// node/2, retired
+	"node/3",			// node/3, retired
+	"node/4",			// node/4, retired
+	"door/GarageN",		// node/5
+	"node/6",			// node/6, retired
 	"node/7",
-	"door/Hall",		// node/8
-	"node/9",
-	"node/10",
-	"node/11",
-	"node/12",
-	"node/13",
-	"door/Garage",		// node/14
-	"node/15",
-	"node/16",
-	"door/GarageS",		// node/17
-	"node/18",
+	"door/Hall",		// node/8,
+	"node/9",			// node/9, retired
+	"node/10",			// node/10, retired
+	"node/11",			// node/11, retired
+	"node/12",			// node/12, retired
+	"node/13",			// node/13, retired
+	"door/Garage",		// node/14,
+	"node/15",			// node/15, retired
+	"node/16",			// node/16, retired
+	"node/17",			// node/17, retired
+	"node/18",			// node/18, retired
 	"door/Back",		// node/19
 	"node/20",
 	"window/officeN",	// node/21
-	"door/Front",		// node/22
+	"node/22",			// node/22, rev 0.1 PWB, Aliexpress NRF25l01+, RF_SETUP[0]=0, crappy reed switch???
 	"node/23",
-	"window/officeS",	// node/24
-	"window/masterW",	// node/25
+	"window/officeS",	// node/24, rev 0.2 PWB, Aliexpress Si24R1,    RF_SETUP[0]=0
+	"door/GarageS",		// node/25, rev 0.2 PWB, Aliexpress Si24R1,    RF_SETUP[0]=1
 	"window/masterE",	// node/26
-	"node/27",			// node/27
-	"node/28",
-	"node/29",
-	"node/30",
-	"node/31",
-	"door/Sliding",		// node/32",
+	"node/27",			// node/27, rev 0.3 PWB, Aliexpress Si24R1,    RF_SETUP[0]=0
+	"door/Front",		// node/28, rev 0.3 PWB, RFM75,                RF_SETUP[0]=1
+	"node/29",			// node/29, rev 0.3 PWB, Aliexpress NRF24l01+, RF_SETUP[0]=0
+	"node/30",			// node/30, rev 0.4 PWB, Aliexpress NRF24l01+, RF_SETUP[0]=0
+	"node/31",			// node/31, rev 0.4 PWB, RFM75,                RF_SETUP[0]=0
+	"door/Sliding",		// node/32, rev 0.2 PWB, Aliexpress NRF24l01+, RF_SETUP[0]=1
 	"node/33",
 	"node/34",
 	"node/35",
@@ -207,16 +207,6 @@ void mosq_log_callback(struct mosquitto *mosq, void *userdata, int level, const 
 	}
 }
 
-#if 0
-//
-// error - wrapper for perror
-//
-void error(char *msg) {
-	perror(msg);
-//	exit(0);
-}
-#endif
-
 void nrfIntrHandler(void)
 {
 	uint8_t pipeNum __attribute__ ((unused));
@@ -231,13 +221,8 @@ void nrfIntrHandler(void)
 	}
 
 	nrfRead( payload, payLen );
-//	if (memcmp(payload, prevPld, 3) != 0) {
-		parse_payload( payload );
-		memcpy(prevPld, payload, 3);
-//	} else {
-//		fprintf(stderr, "duplicate\n");
-//		fflush(stderr);
-//	}
+	parse_payload( payload );
+	memcpy(prevPld, payload, 3);
 }
 
 
@@ -256,7 +241,7 @@ void sig_handler( int sig )
 
 int Usage(void)
 {
-	fprintf(stderr, "Usage: %s [-hvlpsStq] [-P n] [-H s] [-c chan] [-g pin] [-x \"1,3-5\"] [-f \"1,3-5\"]\n", pgmName);
+	fprintf(stderr, "Usage: %s [-hvmpsStq] [-P n] [-H s] [-c chan] [-g pin] [-x \"1,3-5\"] [-f \"1,3-5\"]\n", pgmName);
 	fprintf(stderr, "  -h	this message\n");
 	fprintf(stderr, "  -v	verbose\n");
 	fprintf(stderr, "  -W	disable shockBurst mode\n");
@@ -550,7 +535,7 @@ int parse_payload( uint8_t *payload )
 		sprintf(topicVal, (payload[1] & 0x02) ? "OPEN" : "SHUT");
 		if (!mqttStr) {
 			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  SW1: %s", (payload[1] & 0x02) ? "OPEN" : "SHUT");
-			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, " %s", (payload[1] & 0x01) ? "PC" : "");
+//			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, " %s", (payload[1] & 0x01) ? "PC" : "");
 		}
 		break;
 	case SENID_SW2:
@@ -580,16 +565,22 @@ int parse_payload( uint8_t *payload )
 		return -1;
 	}
 
+	mosquitto_publish(mosq, NULL, topic, strlen(topicVal), topicVal, 0, 0);
+
 	if (!mqttStr) {
-		printf("%s\n", tbuf);
+		printf("%s", tbuf);
 	} else {
-		mosquitto_publish(mosq, NULL, topic, strlen(topicVal), topicVal, 0, 0);
 		if (printTime) {
-			printf("%d  %s %s\n", (int)ts.tv_sec, topic, topicVal);
-		} else {
-			printf("%s %s\n", topic, topicVal);
-		}
+			printf("%d  ", (int)ts.tv_sec);
+		} 
+		printf("Id: %2d ", nodeId);
+		printf("Seq: %d ", seq);
+		printf("%s %s", topic, topicVal);
 	}
+	if (sensorId == SENID_SW1)
+		printf(" %s\n", (payload[1] & 0x01) ? "PC" : "");
+	else
+		printf("\n");
 				
 	fflush(stdout);
 	return 0;

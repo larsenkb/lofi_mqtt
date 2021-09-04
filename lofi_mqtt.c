@@ -175,7 +175,7 @@ int maxNodes = sizeof(nodeMap)/sizeof(char*);
 
 
 //************  Forward Declarations
-int parse_payload( uint8_t *payload );
+int parse_payload( uint8_t *payload, uint8_t cd );
 void spiSetup( int speed );
 int spiXfer( uint8_t *buf, int cnt );
 uint8_t nrfRegRead( int reg );
@@ -211,9 +211,11 @@ void nrfIntrHandler(void)
 {
 	uint8_t pipeNum __attribute__ ((unused));
 	uint8_t payLen __attribute__ ((unused));
+	uint8_t cd;
 	unsigned char payload[PAYLOAD_LEN];
 	unsigned char prevPld[PAYLOAD_LEN];
 
+	cd = nrfRegRead( NRF_CD );
 	payLen = nrfReadRxPayloadLen();
 	if (payLen != PAYLOAD_LEN) {
 		fprintf(stderr, "PAYLOAD LEN: %d\n", payLen);
@@ -221,7 +223,7 @@ void nrfIntrHandler(void)
 	}
 
 	nrfRead( payload, payLen );
-	parse_payload( payload );
+	parse_payload( payload, cd );
 	memcpy(prevPld, payload, 3);
 }
 
@@ -406,18 +408,19 @@ int main(int argc, char *argv[])
 
 	switch (speed) {
 	case speed_1M:
-		nrfRegWrite( NRF_RF_SETUP, 0x06 );
+		val8 = 0x06;
 		break;
 	case speed_2M:
-		nrfRegWrite( NRF_RF_SETUP, 0x0e );
+		val8 = 0x0e;
 		break;
 	case speed_250K:
-		nrfRegWrite( NRF_RF_SETUP, 0x26 );
+		val8 = 0x26;
 		break;
 	default:
-		nrfRegWrite( NRF_RF_SETUP, 0x0e );
+		val8 = 0x03;
 		break;
 	}
+	nrfRegWrite( NRF_RF_SETUP, val8 | 0 );
 
 	nrfFlushTx();
 	nrfFlushRx();
@@ -452,7 +455,7 @@ int showPayload( uint8_t *payload )
 	return 0;
 }
 
-int parse_payload( uint8_t *payload )
+int parse_payload( uint8_t *payload, uint8_t cd )
 {
 	struct timespec ts;
 	//int i;
@@ -532,9 +535,13 @@ int parse_payload( uint8_t *payload )
 		break;
 	case SENID_SW1:
 		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/sw1");
-		sprintf(topicVal, (payload[1] & 0x02) ? "OPEN" : "SHUT");
+//		if (nodeId == 29)
+//			sprintf(topicVal, "%d", (payload[1] & 0x02) ? 1 : 0 );
+//		else
+			sprintf(topicVal, (payload[1] & 0x02) ? "OPEN" : "SHUT");
 		if (!mqttStr) {
 			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  SW1: %s", (payload[1] & 0x02) ? "OPEN" : "SHUT");
+
 //			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, " %s", (payload[1] & 0x01) ? "PC" : "");
 		}
 		break;
@@ -577,6 +584,9 @@ int parse_payload( uint8_t *payload )
 		printf("Seq: %d ", seq);
 		printf("%s %s", topic, topicVal);
 	}
+
+	cd = cd;
+
 	if (sensorId == SENID_SW1)
 		printf(" %s\n", (payload[1] & 0x01) ? "PC" : "");
 	else

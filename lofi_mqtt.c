@@ -140,13 +140,13 @@ char *nodeMap[] = {
 	"door/Hall",		// node/8,
 	"node/9",			// node/9, retired
 	"node/10",			// node/10, retired
-	"node/11",			// node/11, retired
+	"node/11",			// node/11, active - testing
 	"node/12",			// node/12, retired
 	"node/13",			// node/13, retired
 	"door/Garage",		// node/14,
 	"node/15",			// node/15, retired
 	"node/16",			// node/16, retired
-	"node/17",			// node/17, retired
+	"node/17",			// node/17, active - testing
 	"node/18",			// node/18, retired
 	"door/Back",		// node/19
 	"node/20",

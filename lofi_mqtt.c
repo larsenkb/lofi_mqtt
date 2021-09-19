@@ -111,14 +111,15 @@ int printPayload = 0;
 int printSeq = 0;
 int en_shockburst = 1;
 char *pgmName = NULL;
-speed_t speed = speed_2M;
+speed_t speed = speed_250K;
 int rf_chan = 84;
 int maxNodeRcvd = 0;
 int verbose = 0;
 int printTime = 0;
+int en_epoch = 0;
 int nrfIrq = NRFIRQ;
-int en_CRC2 = 0;
-uint8_t	nrf_config = 0x38;
+int en_CRC1 = 0;
+uint8_t	nrf_config = 0x3C;
 
 #if !SPI_BIT_BANG
 static int spiFd;
@@ -259,9 +260,10 @@ int Usage(void)
 	fprintf(stderr, "  -m	print output in MQTT format\n");
 	fprintf(stderr, "  -p	print out payload in hex\n");
 	fprintf(stderr, "  -C	use 2 byte CRC; otherwise 1 byte");
-	fprintf(stderr, "  -s	set receive RF bit rate to 1M (default is 2M)\n");
-	fprintf(stderr, "  -S	set receive RF bit rate to 250K (default is 2M)\n");
+	fprintf(stderr, "  -s	set receive RF bit rate to 1M (default is 250kbps)\n");
+	fprintf(stderr, "  -S	set receive RF bit rate to 2M (default is 250kbps)\n");
 	fprintf(stderr, "  -t	print timestamp\n");
+	fprintf(stderr, "  -e	print timestamp in epoc time\n");
 	fprintf(stderr, "  -q	print packet sequence nbr\n");
 	fprintf(stderr, "  -P n	set MQTT port to 'n'\n");
 	fprintf(stderr, "  -H s	set MQTT host to 's'\n");
@@ -284,7 +286,7 @@ int main(int argc, char *argv[])
 
 	pgmName = basename(argv[0]);
 
-	while ((opt = getopt(argc, argv, "hvCWmpsStqc:x:f:g:P:H:")) != -1) {
+	while ((opt = getopt(argc, argv, "hvCWmpsSteqc:x:f:g:P:H:")) != -1) {
 		switch (opt) {
 		case 'h':
 			Usage();
@@ -294,7 +296,7 @@ int main(int argc, char *argv[])
 			mqttStr = 1;
 			break;
 		case 'C':
-			en_CRC2 = (1<<2);
+			en_CRC1 = 1;
 			break;
 		case 'W':
 			en_shockburst = 0;
@@ -312,10 +314,15 @@ int main(int argc, char *argv[])
 			speed = speed_1M;
 			break;
 		case 'S':
-			speed = speed_250K;
+			speed = speed_2M;
 			break;
 		case 't':
 			printTime = 1;
+			en_epoch = 0;
+			break;
+		case 'e':
+			printTime = 1;
+			en_epoch = 1;
 			break;
 		case 'H':
 			mosq_host = optarg;
@@ -381,7 +388,8 @@ int main(int argc, char *argv[])
 
 	// NRF setup
 	// enable 8-bit CRC; mask TX_DS and MAX_RT
-	nrf_config |= en_CRC2;
+	if (en_CRC1)
+		nrf_config &= ~(1<<2);
 	nrfRegWrite( NRF_CONFIG, nrf_config );
 
 	if (en_shockburst) {
@@ -431,10 +439,10 @@ int main(int argc, char *argv[])
 		val8 = 0x26;
 		break;
 	default:
-		val8 = 0x03;
+		val8 = 0x26;
 		break;
 	}
-	nrfRegWrite( NRF_RF_SETUP, val8 | 0 );
+	nrfRegWrite( NRF_RF_SETUP, val8 | 1 );
 
 	nrfFlushTx();
 	nrfFlushRx();
@@ -467,7 +475,8 @@ int main(int argc, char *argv[])
 
 
 	for (;;) {
-		delay(10000);
+		sleep(10);
+		//delay(10000);
 	}
 
 	return 0;
@@ -483,6 +492,7 @@ int showPayload( uint8_t *payload )
 PI_THREAD (parse_payload)
 {
 	struct timespec ts;
+	struct tm mt;
 	//int i;
 	unsigned short val;
 	uint8_t	sensorId;
@@ -514,32 +524,38 @@ PI_THREAD (parse_payload)
 	topic[0] = '\0';
 
 	clock_gettime(CLOCK_REALTIME, &ts);
+	localtime_r(&ts.tv_sec, &mt);
+	//printf("%02d:%02d:%02d\n", mt.tm_hour, mt.tm_min, mt.tm_sec);
+	
 
 	nodeId = payload[0];
 
 	if (nodeId < 1 || nodeId >= maxNodes) {
 		printf("Bad nodeId: %d\n", nodeId);
-		printf("Payload: %02X %02X %02X\n",
-			payload[0], payload[1], payload[2]);
+		printf("Payload: %02X %02X %02X\n", payload[0], payload[1], payload[2]);
+		fflush(stdout);
 		continue;
 	}
 
 	topicIdx = snprintf(&topic[topicIdx], 127-topicIdx, "lofi/%s", nodeMap[nodeId]);
 
-	if (printTime) {
-//		tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "%d  ", (int)ts.tv_sec);
-		tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "%02d:%02d:%02d  ",
-		      (int) (ts.tv_sec % SECS_IN_DAY) / 3600,
-		      (int) (ts.tv_sec % 3600) / 60,
-		      (int) ts.tv_sec % 60);
+	if (!mqttStr && printTime) {
+		if (en_epoch)
+			printf("%4d.%03d  ",
+				(int) (ts.tv_sec % 10000),
+				(int) ((ts.tv_nsec/100000)+5)/10); // .%03ld
+		else
+			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "%02d:%02d:%02d.%03d  ",
+				mt.tm_hour, mt.tm_min, mt.tm_sec,
+			  (int) ((ts.tv_nsec/100000)+5)/10); // .%03ld
 	}
 
-	if (printPayload) {
+	if (!mqttStr && printPayload) {
 		tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "Payload: %02X %02X %02X",
 			payload[0], payload[1], payload[2]);
-		printf("%s\n", tbuf);
-		fflush(stdout);
-		continue;
+//		printf("%s\n", tbuf);
+//		fflush(stdout);
+//		continue;
 	}
 
 	if (!mqttStr) {
@@ -581,14 +597,9 @@ PI_THREAD (parse_payload)
 		break;
 	case SENID_SW1:
 		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/sw1");
-//		if (nodeId == 29)
-//			sprintf(topicVal, "%d", (payload[1] & 0x02) ? 1 : 0 );
-//		else
-			sprintf(topicVal, (payload[1] & 0x02) ? "OPEN" : "SHUT");
+		sprintf(topicVal, (payload[1] & 0x02) ? "OPEN" : "SHUT");
 		if (!mqttStr) {
 			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  SW1: %s", (payload[1] & 0x02) ? "OPEN" : "SHUT");
-
-//			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, " %s", (payload[1] & 0x01) ? "PC" : "");
 		}
 		break;
 	case SENID_SW2:
@@ -613,7 +624,7 @@ PI_THREAD (parse_payload)
 		}
 		break;
 	default:
-		fprintf(stderr, "Bad SensorId: %d\n", sensorId);
+		printf("Bad SensorId: %d\n", sensorId);
 		fflush(stdout);
 		continue;
 	}
@@ -623,6 +634,19 @@ PI_THREAD (parse_payload)
 	if (!mqttStr) {
 		printf("%s", tbuf);
 	} else {
+#if 1
+		if (printTime) {
+			//printf("%d  ", (int)ts.tv_sec);
+			if (en_epoch)
+				printf("%4d.%03d  ",
+					(int) (ts.tv_sec % 10000),
+					(int) ((ts.tv_nsec/100000)+5)/10); // .%03ld
+			else
+				printf("%02d:%02d:%02d.%03d  ",
+					mt.tm_hour, mt.tm_min, mt.tm_sec,
+					(int) ((ts.tv_nsec/100000)+5)/10); // .%03ld
+		}
+#else
 		if (printTime) {
 			//printf("%d  ", (int)ts.tv_sec);
 			printf("%02d:%02d:%02d.%03d  ",
@@ -630,7 +654,8 @@ PI_THREAD (parse_payload)
 		      (int) (ts.tv_sec % 3600) / 60,
 		      (int) ts.tv_sec % 60,
 			  (int) ((ts.tv_nsec/100000)+5)/10); // .%03ld
-		} 
+		}
+#endif	
 		printf("Id: %2d ", nodeId);
 		printf("Seq: %d ", seq);
 		printf("%s %s", topic, topicVal);

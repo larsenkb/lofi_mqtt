@@ -14,6 +14,7 @@
 #include <sys/signalfd.h>
 #include <sys/types.h>
 #include <pthread.h>
+#include <semaphore.h>
 #include <signal.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -155,7 +156,7 @@ char *nodeMap[] = {
 	"door/Back",		// node/19
 	"node/20",
 	"window/officeN",	// node/21
-	"node/22",			// node/22, rev 0.1 PWB, Aliexpress NRF25l01+, RF_SETUP[0]=0, crappy reed switch???
+	"window/FrontroomE",	// node/22, rev 0.1 PWB, Aliexpress NRF25l01+, RF_SETUP[0]=0, crappy reed switch???
 	"node/23",
 	"window/officeS",	// node/24, rev 0.2 PWB, Aliexpress Si24R1,    RF_SETUP[0]=0
 	"door/GarageS",		// node/25, rev 0.2 PWB, Aliexpress Si24R1,    RF_SETUP[0]=1
@@ -176,6 +177,7 @@ char *nodeMap[] = {
 };
 int maxNodes = sizeof(nodeMap)/sizeof(char*);
 
+sem_t count_sem;
 
 
 //************  Forward Declarations
@@ -217,6 +219,31 @@ void mosq_log_callback(struct mosquitto *mosq, void *userdata, int level, const 
 uint32_t	pldBuf[PLDBUF_SIZE];
 uint32_t	pldBufWr, pldBufRd;
 
+#if 1
+void nrfIntrHandler(void)
+{
+//	uint8_t pipeNum __attribute__ ((unused));
+//	uint8_t payLen __attribute__ ((unused));
+//	unsigned char payload[PAYLOAD_LEN];
+
+	nrfRegWrite( NRF_STATUS, 0x70);
+	if (sem_post(&count_sem) == -1) {
+		perror("sem_post");
+	}
+//	payLen = nrfReadRxPayloadLen();
+//	if (payLen != PAYLOAD_LEN) {
+//		fprintf(stderr, "PAYLOAD LEN: %d\n", payLen);
+//		fflush(stderr);
+//	}
+
+//	nrfRead( payload, payLen );
+
+//	pldBuf[pldBufWr] = *(uint32_t *)payload;
+//	pldBufWr = (pldBufWr + 1) & (PLDBUF_SIZE-1);
+
+//	parse_payload( payload );
+}
+#else
 void nrfIntrHandler(void)
 {
 	uint8_t pipeNum __attribute__ ((unused));
@@ -236,7 +263,7 @@ void nrfIntrHandler(void)
 
 //	parse_payload( payload );
 }
-
+#endif
 
 void sig_handler( int sig )
 {
@@ -343,6 +370,10 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	if (sem_init(&count_sem, 0, 0) == -1) {
+		perror ("sem_init"); exit(1);
+	}
+
 //	atexit(printStats);
 	if (signal(SIGINT, sig_handler) == SIG_ERR)
 		fprintf(stderr, "Can't catch SIGINT\n");
@@ -411,19 +442,12 @@ int main(int argc, char *argv[])
 
 	nrfRegWrite( NRF_EN_RXADDR, 1 ); //3);
 	nrfRegWrite( NRF_RX_PW_P0, PAYLOAD_LEN );
-#if 1
+
 	nrfRegWrite( NRF_RX_PW_P1, 0 ); //PAYLOAD_LEN );
 	nrfRegWrite( NRF_RX_PW_P2, 0 );
 	nrfRegWrite( NRF_RX_PW_P3, 0 );
 	nrfRegWrite( NRF_RX_PW_P4, 0 );
 	nrfRegWrite( NRF_RX_PW_P5, 0 );
-#else
-	nrfRegWrite( NRF_RX_PW_P1, 8 );
-	nrfRegWrite( NRF_RX_PW_P2, 8 );
-	nrfRegWrite( NRF_RX_PW_P3, 8 );
-	nrfRegWrite( NRF_RX_PW_P4, 8 );
-	nrfRegWrite( NRF_RX_PW_P5, 8 );
-#endif
 
 	// Set up channel
 	nrfRegWrite( NRF_RF_CH, rf_chan );
@@ -505,17 +529,42 @@ PI_THREAD (parse_payload)
 	int		tbufIdx = 0;
 	int		seq = 0;
 	uint8_t	payload[4];
+	int pkt_avail = false;
+	
+//	uint8_t payLen;
 
 
 	for (;;) {
 
-		while (pldBufRd == pldBufWr) {
-			usleep(1000);
-			// some type of sleep
-		};
+//		while (pldBufRd == pldBufWr) {
+//			usleep(1000);
+//			// some type of sleep
+//		};
 
-	*(uint32_t *)payload	= pldBuf[pldBufRd];
-	pldBufRd = (pldBufRd + 1) & (PLDBUF_SIZE-1);
+		if (!pkt_avail) {
+			if (sem_wait(&count_sem) == -1) {
+				perror("sem_wait");
+			}
+		}
+
+		//fprintf(stderr, "FIFO_STATUS: %02X\n", nrfRegRead(NRF_FIFO_STATUS));
+		//fflush(stderr);
+		//payLen = nrfReadRxPayloadLen();
+		//if (payLen != PAYLOAD_LEN) {
+		//	fprintf(stderr, "PAYLOAD LEN: %d\n", payLen);
+		//	//fflush(stderr);
+		//}
+
+
+		nrfRead( payload, 3 );
+
+		//fprintf(stderr, "FIFO_STATUS: %02X\n", nrfRegRead(NRF_FIFO_STATUS));
+		//fflush(stderr);
+
+
+
+	//*(uint32_t *)payload	= pldBuf[pldBufRd];
+	//pldBufRd = (pldBufRd + 1) & (PLDBUF_SIZE-1);
 
 	topicIdx = 0;
 	tbufIdx = 0;
@@ -668,6 +717,17 @@ PI_THREAD (parse_payload)
 		printf("\n");
 				
 	fflush(stdout);
+
+		//payLen = nrfReadRxPayloadLen();
+		//if (payLen != PAYLOAD_LEN) {
+			//fprintf(stderr, "PAYLOAD1 LEN: %d\n", payLen);
+			//fprintf(stderr, "FIFO_STATUS: %02X\n", nrfRegRead(NRF_FIFO_STATUS));
+			//fflush(stderr);
+		//}
+
+#if 1
+		pkt_avail = ((nrfRegRead(NRF_FIFO_STATUS) & 1) == 0);
+#endif
 	}
 	return 0;
 }

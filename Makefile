@@ -32,7 +32,7 @@ PROGRAMS = lofi_mqtt
 all: ${PROGRAMS}
 
 lofi_mqtt: lofi_mqtt.c
-	gcc ${CCFLAGS} -Wall -lwiringPi -lmosquitto -o $@ $@.c
+	gcc ${CCFLAGS} -Wall -lwiringPi -lmosquitto -lpthread -o $@ $@.c
 
 tags:
 	ctags lofi_mqtt.c 

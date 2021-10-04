@@ -156,7 +156,7 @@ char *nodeMap[] = {
 	"door/Back",		// node/19
 	"node/20",
 	"window/officeN",	// node/21
-	"window/FrontroomE",	// node/22, rev 0.1 PWB, Aliexpress NRF25l01+, RF_SETUP[0]=0, crappy reed switch???
+	"window/LivingE",	// node/22, rev 0.1 PWB, Aliexpress NRF25l01+, RF_SETUP[0]=0, crappy reed switch???
 	"node/23",
 	"window/officeS",	// node/24, rev 0.2 PWB, Aliexpress Si24R1,    RF_SETUP[0]=0
 	"door/GarageS",		// node/25, rev 0.2 PWB, Aliexpress Si24R1,    RF_SETUP[0]=1
@@ -523,8 +523,8 @@ PI_THREAD (parse_payload)
 	uint8_t nodeId;
 	char tbuf[128];
 //	char sbuf[80];
-	char topic[128];
-	char topicVal[20];
+	char topic[40];
+	char topicVal[40];
 	int topicIdx = 0;
 	int		tbufIdx = 0;
 	int		seq = 0;
@@ -536,24 +536,11 @@ PI_THREAD (parse_payload)
 
 	for (;;) {
 
-//		while (pldBufRd == pldBufWr) {
-//			usleep(1000);
-//			// some type of sleep
-//		};
-
 		if (!pkt_avail) {
 			if (sem_wait(&count_sem) == -1) {
 				perror("sem_wait");
 			}
 		}
-
-		//fprintf(stderr, "FIFO_STATUS: %02X\n", nrfRegRead(NRF_FIFO_STATUS));
-		//fflush(stderr);
-		//payLen = nrfReadRxPayloadLen();
-		//if (payLen != PAYLOAD_LEN) {
-		//	fprintf(stderr, "PAYLOAD LEN: %d\n", payLen);
-		//	//fflush(stderr);
-		//}
 
 
 		nrfRead( payload, 3 );
@@ -602,9 +589,6 @@ PI_THREAD (parse_payload)
 	if (!mqttStr && printPayload) {
 		tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "Payload: %02X %02X %02X",
 			payload[0], payload[1], payload[2]);
-//		printf("%s\n", tbuf);
-//		fflush(stdout);
-//		continue;
 	}
 
 	if (!mqttStr) {
@@ -646,7 +630,8 @@ PI_THREAD (parse_payload)
 		break;
 	case SENID_SW1:
 		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/sw1");
-		sprintf(topicVal, (payload[1] & 0x02) ? "OPEN" : "SHUT");
+		//sprintf(topicVal, (payload[1] & 0x02) ? "OPEN" : "SHUT");
+		sprintf(topicVal, "{\"state\":\"%s\",\"trig\":\"%s\"}", (payload[1] & 0x02) ? "OPEN" : "SHUT", (payload[1] & 0x01) ? "PC" : "WD");
 		if (!mqttStr) {
 			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  SW1: %s", (payload[1] & 0x02) ? "OPEN" : "SHUT");
 		}
@@ -707,13 +692,18 @@ PI_THREAD (parse_payload)
 #endif	
 		printf("Id: %2d ", nodeId);
 		printf("Seq: %d ", seq);
-		printf("%s %s", topic, topicVal);
+		printf("%s", topic);
+		//printf("%s %s", topic, topicVal);
+		if (sensorId == SENID_SW1)
+			printf(" %s %s", (payload[1] & 0x02) ? "OPEN" : "SHUT", (payload[1] & 0x01) ? "PC" : "");
+		else
+			printf(" %s", topicVal);
 	}
 
 
-	if (sensorId == SENID_SW1)
-		printf(" %s\n", (payload[1] & 0x01) ? "PC" : "");
-	else
+//	if (sensorId == SENID_SW1)
+//		printf(" %s\n", (payload[1] & 0x01) ? "PC" : "");
+//	else
 		printf("\n");
 				
 	fflush(stdout);

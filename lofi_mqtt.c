@@ -164,7 +164,7 @@ char *nodeMap[] = {
 	"node/27",			// node/27, rev 0.3 PWB, Aliexpress Si24R1,    RF_SETUP[0]=0
 	"door/Front",		// node/28, rev 0.3 PWB, RFM75,                RF_SETUP[0]=1
 	"node/29",			// node/29, rev 0.3 PWB, Aliexpress NRF24l01+, RF_SETUP[0]=0
-	"node/30",			// node/30, rev 0.4 PWB, Aliexpress NRF24l01+, RF_SETUP[0]=0
+	"door/GuestBr",		// node/30, rev 0.4 PWB, Aliexpress NRF24l01+, RF_SETUP[0]=0
 	"node/31",			// node/31, rev 0.4 PWB, RFM75,                RF_SETUP[0]=0
 	"door/Sliding",		// node/32, rev 0.2 PWB, Aliexpress NRF24l01+, RF_SETUP[0]=1
 	"node/33",

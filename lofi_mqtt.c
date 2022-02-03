@@ -155,7 +155,7 @@ char *nodeMap[] = {
 	"node/18",			// node/18, retired
 	"door/Back",		// node/19
 	"node/20",
-	"window/OfficeN",	// node/21
+	"door/ToyRm",		// node/21
 	"window/LivingE",	// node/22, rev 0.1 PWB, Aliexpress NRF25l01+, RF_SETUP[0]=0, crappy reed switch???
 	"node/23",
 	"window/OfficeS",	// node/24, rev 0.2 PWB, Aliexpress Si24R1,    RF_SETUP[0]=0
@@ -167,8 +167,8 @@ char *nodeMap[] = {
 	"door/GuestBr",		// node/30, rev 0.4 PWB, Aliexpress NRF24l01+, RF_SETUP[0]=0
 	"node/31",			// node/31, rev 0.4 PWB, RFM75,                RF_SETUP[0]=0
 	"door/Sliding",		// node/32, rev 0.2 PWB, Aliexpress NRF24l01+, RF_SETUP[0]=1
-	"node/33",
-	"node/34",
+	"node/33",			// node/33, rev 0.5 PWB, RFM75
+	"node/34",			// node/34, rev 0.5 PWB, RFM75
 	"node/35",
 	"node/36",
 	"node/37",

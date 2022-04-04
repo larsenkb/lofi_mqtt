@@ -168,7 +168,7 @@ char *nodeMap[] = {
 	"node/31",			// node/31, rev 0.4 PWB, RFM75,                RF_SETUP[0]=0
 	"door/Sliding",		// node/32, rev 0.2 PWB, Aliexpress NRF24l01+, RF_SETUP[0]=1
 	"node/33",			// node/33, rev 0.5 PWB, RFM75
-	"node/34",			// node/34, rev 0.5 PWB, RFM75
+	"window/LivingW",	// node/34, rev 0.5 PWB, RFM75
 	"node/35",
 	"node/36",
 	"node/37",

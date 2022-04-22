@@ -46,7 +46,19 @@
 #define SCLK_PIN		14
 #endif
 
-#define PAYLOAD_LEN		3
+typedef struct {
+	uint8_t		nodeId;
+	uint8_t		lastState	:1;
+	uint8_t		closed		:1;
+	uint8_t		seq			:2;
+	uint8_t		sensorId	:4;
+	uint8_t		hi			:4;
+	uint8_t		rsvd		:4;
+	uint8_t		mid;
+	uint8_t		low;
+} sensor_t;
+
+#define PAYLOAD_LEN		sizeof(sensor_t)
 
 
 #define handle_error(msg) \
@@ -96,7 +108,9 @@ typedef enum {
 	SENID_VCC,
 	SENID_TEMP,
 	SENID_CTR,
-	SENID_REV
+	SENID_REV,
+	SENID_ATEMP,
+	SENID_AHUMD
 } senId_t;
 
 
@@ -497,6 +511,7 @@ int main(int argc, char *argv[])
 
 //	nrfRegWrite( NRF_EN_RXADDR, 3 );
 
+	nrfFlushRx();
 
 	for (;;) {
 		sleep(10);
@@ -508,7 +523,14 @@ int main(int argc, char *argv[])
 
 int showPayload( uint8_t *payload )
 {
+#if 1
+	printf("Payload:");
+	for (int i = 0; i < PAYLOAD_LEN; i++)
+		printf(" %02X", payload[i]);
+	printf("\n");
+#else
 	printf("Payload: %02X %02X %02X\n", payload[0], payload[1], payload[2]);
+#endif
 	return 0;
 }
 
@@ -519,6 +541,7 @@ PI_THREAD (parse_payload)
 	struct tm mt;
 	//int i;
 	unsigned short val;
+	int val1;
 	uint8_t	sensorId;
 	uint8_t nodeId;
 	char tbuf[128];
@@ -528,9 +551,9 @@ PI_THREAD (parse_payload)
 	int topicIdx = 0;
 	int		tbufIdx = 0;
 	int		seq = 0;
-	uint8_t	payload[4];
+	uint8_t	payload[8];
 	int pkt_avail = false;
-	
+	sensor_t *pl = (sensor_t *)payload;
 //	uint8_t payLen;
 
 
@@ -543,7 +566,7 @@ PI_THREAD (parse_payload)
 		}
 
 
-		nrfRead( payload, 3 );
+		nrfRead( payload, PAYLOAD_LEN );
 
 		//fprintf(stderr, "FIFO_STATUS: %02X\n", nrfRegRead(NRF_FIFO_STATUS));
 		//fflush(stderr);
@@ -564,11 +587,13 @@ PI_THREAD (parse_payload)
 	//printf("%02d:%02d:%02d\n", mt.tm_hour, mt.tm_min, mt.tm_sec);
 	
 
-	nodeId = payload[0];
+//	nodeId = payload[0];
+	nodeId = pl->nodeId;
 
 	if (nodeId < 1 || nodeId >= maxNodes) {
 		printf("Bad nodeId: %d\n", nodeId);
-		printf("Payload: %02X %02X %02X\n", payload[0], payload[1], payload[2]);
+		showPayload(payload);
+//		printf("Payload: %02X %02X %02X\n", payload[0], payload[1], payload[2]);
 		fflush(stdout);
 		continue;
 	}
@@ -587,38 +612,53 @@ PI_THREAD (parse_payload)
 	}
 
 	if (!mqttStr && printPayload) {
-		tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "Payload: %02X %02X %02X",
-			payload[0], payload[1], payload[2]);
+		tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "Payload: %02X %02X %02X %02X %02X",
+			payload[0], payload[1], payload[2], payload[3], payload[4]);
 	}
 
 	if (!mqttStr) {
 		tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "Id: %2d ", nodeId);
 	}
 
-
+#if 1
+	if (pl->sensorId == 0 || pl->sensorId > SENID_AHUMD) {
+		printf("Bad Sensor Id: %d %s\n", pl->sensorId, tbuf);
+		fflush(stdout);
+		continue;
+	}
+#else
 	if (payload[1] == 0) {
 		printf("%s\n", tbuf);
 		fflush(stdout);
 		continue;
 	}
+#endif
 
-	sensorId = (payload[1]>>4) & 0xF;
-	seq = (payload[1] >> 2) & 0x3;
+//	sensorId = (payload[1]>>4) & 0xF;
+//	seq = (payload[1] >> 2) & 0x3;
+	sensorId = pl->sensorId;
+	seq = pl->seq;
 
 	if (!mqttStr && printSeq) {
 		tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Seq: %1d", seq);
 	}
 
-	val = payload[1] & 0x03;
+//	val = payload[1] & 0x03;
+	val = pl->hi;
 	val <<= 8;
-	val += payload[2];
+//	val += payload[2];
+	val += pl->low;
+
+	val1 = pl->hi;
+	val1 = (val1<<8) | pl->mid;
+	val1 = (val1<<8) | pl->low;
 
 	switch (sensorId) {
 	case SENID_REV:
 		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/rev");
-		sprintf(topicVal, "%d", val);
+		sprintf(topicVal, "%d.%d", val1/256, val1&0xff);
 		if (!mqttStr) {
-			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Rev: %4d", val);
+			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Rev: %d.%d", val1/256, val1&0xff);
 		}
 		break;
 	case SENID_CTR:
@@ -655,6 +695,31 @@ PI_THREAD (parse_payload)
 		sprintf(topicVal, "%4.2f", 1.0 * (float)val - 260.0);
 		if (!mqttStr) {
 			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Temp: %4.2f",1.0 * (float)val - 260.0);
+		}
+		break;
+	case SENID_ATEMP:
+		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/atemp");
+		float ftemp = ((float)(val1*200)/0x100000) - 50.0;
+		ftemp = (ftemp * 9.0/5.0 ) + 32.05;
+		if (ftemp < -30.0) ftemp = -30.0;
+		if (ftemp > 120.0) ftemp = 120.0;
+//		if (ftemp < -30.0 || ftemp > 140.0) goto check;
+		sprintf(topicVal, "%4.1f", ftemp);
+//		sprintf(topicVal, "%4.2f", (((float)(val1*200))/0x100000) - 50.0);
+		if (!mqttStr) {
+//			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Temp: %4.2f",((float)(val1*200)/0x100000) - 50.0);
+			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Temp: %4.1f", ftemp);
+		}
+		break;
+	case SENID_AHUMD:
+		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/ahumd");
+		float fhumd = ((float)(val1*100))/0x100000;
+		if (fhumd < 0.0) fhumd = 0.0;
+		if (fhumd > 100.0) fhumd = 100.0;
+		fhumd += 0.05;
+		sprintf(topicVal, "%4.1f", fhumd);
+		if (!mqttStr) {
+			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Temp: %4.1f", fhumd);
 		}
 		break;
 	default:

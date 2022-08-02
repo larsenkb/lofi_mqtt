@@ -33,6 +33,10 @@
 #include <fcntl.h>
 #include <netdb.h>
 
+// Server side C program to demonstrate HTTP Server programming
+#include <netinet/in.h>
+#include <string.h>
+
 
 #define NRFIRQ			5
 #define nrfCSN			10
@@ -59,6 +63,14 @@ typedef struct {
 } sensor_t;
 
 #define PAYLOAD_LEN		sizeof(sensor_t)
+
+typedef struct {
+	uint	nbrMsgs;
+	int		sw1;
+	float	vcc;
+	float	atemp;
+	float	ahumd;
+} node_status_t;
 
 
 #define handle_error(msg) \
@@ -136,6 +148,8 @@ int nrfIrq = NRFIRQ;
 int en_CRC1 = 0;
 uint8_t	nrf_config = 0x3C;
 
+const char *swState[] = { "OPEN", "SHUT", " -- " };
+
 #if !SPI_BIT_BANG
 static int spiFd;
 #endif
@@ -147,6 +161,7 @@ int		mosq_port = 1883;
 int		mosq_keepalive = 60;
 bool	mosq_clean_session = true;
 
+#if 0
 char *nodeMap[] = {
 	"node/0",			// node/0, there never will be a node 0
 	"node/1",			// node/1, retired
@@ -183,13 +198,18 @@ char *nodeMap[] = {
 	"door/Sliding",		// node/32, rev 0.2 PWB, Aliexpress NRF24l01+, RF_SETUP[0]=1
 	"node/33",			// node/33, rev 0.5 PWB, RFM75
 	"window/LivingW",	// node/34, rev 0.5 PWB, RFM75
-	"node/35",
-	"node/36",
+	"node/35",			// node/35, rev 0.4 PWB, RFM75, moded to use Aliexpress AHT10 PWB
+	"node/36",			// node/36, rev 0.6 PWB, RFM75, AHT10
 	"node/37",
 	"node/38",
 	"node/99"
 };
-int maxNodes = sizeof(nodeMap)/sizeof(char*);
+#endif
+
+#define maxNodes  60
+//const int maxNodes = sizeof(nodeMap)/sizeof(char*);
+
+node_status_t nodeStatus[maxNodes];
 
 sem_t count_sem;
 
@@ -197,6 +217,7 @@ sem_t count_sem;
 //************  Forward Declarations
 //int parse_payload( uint8_t *payload );
 PI_THREAD (parse_payload);
+PI_THREAD (http_server);
 void spiSetup( int speed );
 int spiXfer( uint8_t *buf, int cnt );
 uint8_t nrfRegRead( int reg );
@@ -384,6 +405,14 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	for (int i = 0; i < maxNodes; i++) {
+		nodeStatus[i].nbrMsgs = 0;
+		nodeStatus[i].sw1 = 2;
+		nodeStatus[i].vcc = -50.0;
+		nodeStatus[i].atemp = -50.0;
+		nodeStatus[i].ahumd = -50.0;
+	}
+
 	if (sem_init(&count_sem, 0, 0) == -1) {
 		perror ("sem_init"); exit(1);
 	}
@@ -487,7 +516,11 @@ int main(int argc, char *argv[])
 
 //	piHiPri(50);
 
-	int x = piThreadCreate (parse_payload);
+	int x = piThreadCreate (http_server);
+	if (x != 0)
+		fprintf(stderr, "http_server didn't start...\n");
+
+	x = piThreadCreate (parse_payload);
 	if (x != 0)
 		fprintf(stderr, "it didn't start...\n");
 
@@ -598,7 +631,10 @@ PI_THREAD (parse_payload)
 		continue;
 	}
 
-	topicIdx = snprintf(&topic[topicIdx], 127-topicIdx, "lofi/%s", nodeMap[nodeId]);
+	nodeStatus[nodeId].nbrMsgs++;
+
+//	topicIdx = snprintf(&topic[topicIdx], 127-topicIdx, "lofi/%s", nodeMap[nodeId]);
+	topicIdx = snprintf(&topic[topicIdx], 127-topicIdx, "lofi/node/%d", nodeId);
 
 	if (!mqttStr && printTime) {
 		if (en_epoch)
@@ -675,6 +711,7 @@ PI_THREAD (parse_payload)
 		if (!mqttStr) {
 			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  SW1: %s", (payload[1] & 0x02) ? "OPEN" : "SHUT");
 		}
+		nodeStatus[nodeId].sw1 = (payload[1] & 0x02) ? 0 : 1;
 		break;
 	case SENID_SW2:
 		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/sw2");
@@ -689,6 +726,7 @@ PI_THREAD (parse_payload)
 		if (!mqttStr) {
 			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Vcc: %4.2f",(1.1 * 1024.0)/(float)val);
 		}
+		nodeStatus[nodeId].vcc = (1.1 * 1024.0)/(float)val;
 		break;
 	case SENID_TEMP:
 		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/temp");
@@ -710,6 +748,7 @@ PI_THREAD (parse_payload)
 //			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Temp: %4.2f",((float)(val1*200)/0x100000) - 50.0);
 			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Temp: %4.1f", ftemp);
 		}
+		nodeStatus[nodeId].atemp = ftemp;
 		break;
 	case SENID_AHUMD:
 		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/ahumd");
@@ -721,6 +760,7 @@ PI_THREAD (parse_payload)
 		if (!mqttStr) {
 			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Temp: %4.1f", fhumd);
 		}
+		nodeStatus[nodeId].ahumd = fhumd;
 		break;
 	default:
 		printf("Bad SensorId: %d\n", sensorId);
@@ -997,3 +1037,82 @@ void nrfPrintDetails(void)
 #endif
 	fflush(stdout);
 }
+
+
+#define PORT 80
+PI_THREAD (http_server)
+{
+    int server_fd, new_socket; long valread;
+    struct sockaddr_in address;
+    int addrlen = sizeof(address);
+    
+    // Creating socket file descriptor
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+        perror("In socket");
+        exit(EXIT_FAILURE);
+    }
+    
+
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = INADDR_ANY;
+    address.sin_port = htons( PORT );
+    
+    memset(address.sin_zero, '\0', sizeof address.sin_zero);
+    
+    
+    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address))<0) {
+        perror("In bind");
+        exit(EXIT_FAILURE);
+    }
+    if (listen(server_fd, 10) < 0) {
+        perror("In listen");
+        exit(EXIT_FAILURE);
+    }
+
+    // Only this line has been changed. Everything is same.
+    //char *hello = "HTTP/1.1 200 OK\nContent-Type: text/plain\nContent-Length: ";
+    
+    while(1) {
+        char tbuffer[5000] = {0};
+        char buffer[30000] = {0};
+		char tcontent[80];
+		char vcc[10], atemp[10], ahumd[10];
+
+//        printf("\n+++++++ Waiting for new connection ++++++++\n\n");
+        if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen))<0) {
+            perror("In accept");
+            exit(EXIT_FAILURE);
+        }
+        
+        valread = read( new_socket , buffer, 30000);
+
+		sprintf(tbuffer, "Node  #Msgs    sw1     Vcc    aTemp   aHumd\n");
+		for (int i = 1; i < maxNodes; i++) {
+			if (nodeStatus[i].nbrMsgs) {
+				strcpy(vcc, "      ");
+				if (nodeStatus[i].vcc >= 0.0)
+					sprintf(vcc, "%5.2f", nodeStatus[i].vcc);
+				strcpy(atemp, "      ");
+				if (nodeStatus[i].atemp >= 0.0)
+					sprintf(atemp, "%5.2f", nodeStatus[i].atemp);
+				strcpy(ahumd, "      ");
+				if (nodeStatus[i].ahumd >= 0.0)
+					sprintf(ahumd, "%5.2f", nodeStatus[i].ahumd);
+
+				sprintf(tcontent, " %2d  %6d    %s    %s %s   %s\n", i, nodeStatus[i].nbrMsgs,
+						swState[nodeStatus[i].sw1], vcc, atemp, ahumd);
+				strcat(tbuffer, tcontent);
+			}
+		}
+		sprintf(buffer, "%s%d\n\n", "HTTP/1.1 200 OK\nContent-Type: text/plain\nContent-Length: ", strlen(tbuffer));
+		strcat(buffer, tbuffer);
+
+
+//        printf("%s\n",buffer );
+        write(new_socket , buffer , strlen(buffer));
+//        printf("------------------Hello message sent-------------------");
+        close(new_socket);
+    }
+    return 0;
+}
+

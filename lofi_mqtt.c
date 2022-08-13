@@ -147,6 +147,9 @@ int en_epoch = 0;
 int nrfIrq = NRFIRQ;
 int en_CRC1 = 0;
 uint8_t	nrf_config = 0x3C;
+uint8_t p0Addr[] = { 0xE7, 0xE7, 0xE7, 0xE7, 0xE7 };
+uint8_t p15Addr[] = { 0xC2, 0xC2, 0xC2, 0xC2, 0xC2 };
+uint8_t pxAddr[] = { 0xC3, 0xC4, 0xC5, 0xC6 };
 
 const char *swState[] = { "OPEN", "SHUT", " -- " };
 
@@ -209,7 +212,7 @@ char *nodeMap[] = {
 #define maxNodes  60
 //const int maxNodes = sizeof(nodeMap)/sizeof(char*);
 
-node_status_t nodeStatus[maxNodes];
+volatile node_status_t nodeStatus[maxNodes];
 
 sem_t count_sem;
 
@@ -224,6 +227,7 @@ uint8_t nrfRegRead( int reg );
 int nrfRegWrite( int reg, int val );
 void nrfPrintDetails(void);
 int nrfAvailable( uint8_t *pipe_num );
+int nrfRegsWrite( int reg, uint8_t *buf, int len);
 int nrfRead( uint8_t *payload, int len );
 int nrfFlushTx( void );
 int nrfFlushRx( void );
@@ -470,11 +474,19 @@ int main(int argc, char *argv[])
 		// set nbr of retries and delay
 		//	nrfRegWrite( NRF_SETUP_RETR, 0x5F );
 		nrfRegWrite( NRF_SETUP_RETR, 0x77 );
-		nrfRegWrite( NRF_EN_AA, 3 ); // enable auto ack
+		nrfRegWrite( NRF_EN_AA, 0x3F ); // enable auto ack
 	} else {
 		nrfRegWrite( NRF_SETUP_RETR, 0 );
 		nrfRegWrite( NRF_EN_AA, 0 );
 	}
+
+	nrfRegsWrite(NRF_TX_ADDR, p0Addr, 5);
+	nrfRegsWrite(NRF_RX_ADDR_P0, p0Addr, 5);
+	nrfRegsWrite(NRF_RX_ADDR_P1, p15Addr, 5);
+	nrfRegWrite(NRF_RX_ADDR_P2, pxAddr[0]);
+	nrfRegWrite(NRF_RX_ADDR_P3, pxAddr[1]);
+	nrfRegWrite(NRF_RX_ADDR_P4, pxAddr[2]);
+	nrfRegWrite(NRF_RX_ADDR_P5, pxAddr[3]);
 
 	// Disable dynamic payload
 	nrfRegWrite( NRF_FEATURE, 0);
@@ -483,14 +495,14 @@ int main(int argc, char *argv[])
 	// Reset STATUS
 	nrfRegWrite( NRF_STATUS, 0x70 );
 
-	nrfRegWrite( NRF_EN_RXADDR, 1 ); //3);
+	nrfRegWrite( NRF_EN_RXADDR, 0x3F ); //3);
 	nrfRegWrite( NRF_RX_PW_P0, PAYLOAD_LEN );
 
-	nrfRegWrite( NRF_RX_PW_P1, 0 ); //PAYLOAD_LEN );
-	nrfRegWrite( NRF_RX_PW_P2, 0 );
-	nrfRegWrite( NRF_RX_PW_P3, 0 );
-	nrfRegWrite( NRF_RX_PW_P4, 0 );
-	nrfRegWrite( NRF_RX_PW_P5, 0 );
+	nrfRegWrite( NRF_RX_PW_P1, PAYLOAD_LEN );
+	nrfRegWrite( NRF_RX_PW_P2, PAYLOAD_LEN );
+	nrfRegWrite( NRF_RX_PW_P3, PAYLOAD_LEN );
+	nrfRegWrite( NRF_RX_PW_P4, PAYLOAD_LEN );
+	nrfRegWrite( NRF_RX_PW_P5, PAYLOAD_LEN );
 
 	// Set up channel
 	nrfRegWrite( NRF_RF_CH, rf_chan );
@@ -509,7 +521,7 @@ int main(int argc, char *argv[])
 		val8 = 0x26;
 		break;
 	}
-	nrfRegWrite( NRF_RF_SETUP, val8 | 1 );
+	nrfRegWrite( NRF_RF_SETUP, val8); // | 1 );
 
 	nrfFlushTx();
 	nrfFlushRx();
@@ -599,10 +611,10 @@ PI_THREAD (parse_payload)
 		}
 
 
-		nrfRead( payload, PAYLOAD_LEN );
+	nrfRead( payload, PAYLOAD_LEN );
 
-		//fprintf(stderr, "FIFO_STATUS: %02X\n", nrfRegRead(NRF_FIFO_STATUS));
-		//fflush(stderr);
+	//fprintf(stderr, "FIFO_STATUS: %02X\n", nrfRegRead(NRF_FIFO_STATUS));
+	//fflush(stderr);
 
 
 
@@ -631,7 +643,6 @@ PI_THREAD (parse_payload)
 		continue;
 	}
 
-	nodeStatus[nodeId].nbrMsgs++;
 
 //	topicIdx = snprintf(&topic[topicIdx], 127-topicIdx, "lofi/%s", nodeMap[nodeId]);
 	topicIdx = snprintf(&topic[topicIdx], 127-topicIdx, "lofi/node/%d", nodeId);
@@ -640,7 +651,8 @@ PI_THREAD (parse_payload)
 		if (en_epoch)
 			printf("%4d.%03d  ",
 				(int) (ts.tv_sec % 10000),
-				(int) ((ts.tv_nsec/100000)+5)/10); // .%03ld
+				(int) (ts.tv_nsec/1000000)); // .%03ld
+//				(int) ((ts.tv_nsec/100000)+5)/10); // .%03ld
 		else
 			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "%02d:%02d:%02d.%03d  ",
 				mt.tm_hour, mt.tm_min, mt.tm_sec,
@@ -696,6 +708,7 @@ PI_THREAD (parse_payload)
 		if (!mqttStr) {
 			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Rev: %d.%d", val1/256, val1&0xff);
 		}
+		nodeStatus[nodeId].nbrMsgs++;
 		break;
 	case SENID_CTR:
 		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/ctr");
@@ -703,6 +716,7 @@ PI_THREAD (parse_payload)
 		if (!mqttStr) {
 			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Ctr: %4d", val);
 		}
+		nodeStatus[nodeId].nbrMsgs++;
 		break;
 	case SENID_SW1:
 		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/sw1");
@@ -711,6 +725,7 @@ PI_THREAD (parse_payload)
 		if (!mqttStr) {
 			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  SW1: %s", (payload[1] & 0x02) ? "OPEN" : "SHUT");
 		}
+		nodeStatus[nodeId].nbrMsgs++;
 		nodeStatus[nodeId].sw1 = (payload[1] & 0x02) ? 0 : 1;
 		break;
 	case SENID_SW2:
@@ -726,6 +741,7 @@ PI_THREAD (parse_payload)
 		if (!mqttStr) {
 			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Vcc: %4.2f",(1.1 * 1024.0)/(float)val);
 		}
+		nodeStatus[nodeId].nbrMsgs++;
 		nodeStatus[nodeId].vcc = (1.1 * 1024.0)/(float)val;
 		break;
 	case SENID_TEMP:
@@ -734,6 +750,7 @@ PI_THREAD (parse_payload)
 		if (!mqttStr) {
 			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Temp: %4.2f",1.0 * (float)val - 260.0);
 		}
+		nodeStatus[nodeId].nbrMsgs++;
 		break;
 	case SENID_ATEMP:
 		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/atemp");
@@ -748,6 +765,7 @@ PI_THREAD (parse_payload)
 //			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Temp: %4.2f",((float)(val1*200)/0x100000) - 50.0);
 			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Temp: %4.1f", ftemp);
 		}
+		nodeStatus[nodeId].nbrMsgs++;
 		nodeStatus[nodeId].atemp = ftemp;
 		break;
 	case SENID_AHUMD:
@@ -760,6 +778,7 @@ PI_THREAD (parse_payload)
 		if (!mqttStr) {
 			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  Temp: %4.1f", fhumd);
 		}
+		nodeStatus[nodeId].nbrMsgs++;
 		nodeStatus[nodeId].ahumd = fhumd;
 		break;
 	default:
@@ -779,7 +798,8 @@ PI_THREAD (parse_payload)
 			if (en_epoch)
 				printf("%4d.%03d  ",
 					(int) (ts.tv_sec % 10000),
-					(int) ((ts.tv_nsec/100000)+5)/10); // .%03ld
+					(int) (ts.tv_nsec/1000000)); // .%03ld
+//					(int) ((ts.tv_nsec/100000)+5)/10); // .%03ld
 			else
 				printf("%02d:%02d:%02d.%03d  ",
 					mt.tm_hour, mt.tm_min, mt.tm_sec,
@@ -920,6 +940,16 @@ int nrfRegWrite( int reg, int val)
 	return spiXfer(spiBuf, 2);
 }
 
+int nrfRegsWrite( int reg, uint8_t *buf, int len)
+{
+	uint8_t spiBuf[20];
+
+	spiBuf[0] = 0x20 | (reg & 0x1f);
+	for (int i=4,j=1; i >= 0; i--,j++)
+		spiBuf[j] = buf[i];
+	return spiXfer(spiBuf, len+1);
+}
+
 uint8_t nrfRegRead( int reg )
 {
 	uint8_t spiBuf[2];
@@ -1042,7 +1072,8 @@ void nrfPrintDetails(void)
 #define PORT 80
 PI_THREAD (http_server)
 {
-    int server_fd, new_socket; long valread;
+    int server_fd, new_socket;
+//   	long valread;
     struct sockaddr_in address;
     int addrlen = sizeof(address);
     
@@ -1084,22 +1115,22 @@ PI_THREAD (http_server)
             exit(EXIT_FAILURE);
         }
         
-        valread = read( new_socket , buffer, 30000);
+        /*valread = */ read( new_socket , buffer, 30000);
 
 		sprintf(tbuffer, "Node  #Msgs    sw1     Vcc    aTemp   aHumd\n");
 		for (int i = 1; i < maxNodes; i++) {
 			if (nodeStatus[i].nbrMsgs) {
 				strcpy(vcc, "      ");
 				if (nodeStatus[i].vcc >= 0.0)
-					sprintf(vcc, "%5.2f", nodeStatus[i].vcc);
+					sprintf(vcc, "%6.2f", nodeStatus[i].vcc);
 				strcpy(atemp, "      ");
-				if (nodeStatus[i].atemp >= 0.0)
-					sprintf(atemp, "%5.2f", nodeStatus[i].atemp);
+				if (nodeStatus[i].atemp >= -40.0)
+					sprintf(atemp, "%6.2f", nodeStatus[i].atemp);
 				strcpy(ahumd, "      ");
 				if (nodeStatus[i].ahumd >= 0.0)
-					sprintf(ahumd, "%5.2f", nodeStatus[i].ahumd);
+					sprintf(ahumd, "%6.2f", nodeStatus[i].ahumd);
 
-				sprintf(tcontent, " %2d  %6d    %s    %s %s   %s\n", i, nodeStatus[i].nbrMsgs,
+				sprintf(tcontent, " %2d  %6d    %s  %s  %s  %s\n", i, nodeStatus[i].nbrMsgs,
 						swState[nodeStatus[i].sw1], vcc, atemp, ahumd);
 				strcat(tbuffer, tcontent);
 			}
@@ -1110,6 +1141,7 @@ PI_THREAD (http_server)
 
 //        printf("%s\n",buffer );
         write(new_socket , buffer , strlen(buffer));
+		//fflush(new_socket);
 //        printf("------------------Hello message sent-------------------");
         close(new_socket);
     }

@@ -1069,7 +1069,7 @@ void nrfPrintDetails(void)
 }
 
 
-#define PORT 80
+#define PORT 8080
 PI_THREAD (http_server)
 {
     int server_fd, new_socket;

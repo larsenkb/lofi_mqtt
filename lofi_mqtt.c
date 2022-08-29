@@ -76,6 +76,7 @@ typedef struct {
 #define handle_error(msg) \
 	do { perror(msg); /*exit(EXIT_FAILURE);*/ } while (0)
 
+// define the NRF24l01+ register addresses
 #define NRF_CONFIG			0x00
 #define NRF_EN_AA			0x01
 #define NRF_EN_RXADDR		0x02
@@ -162,6 +163,8 @@ struct	mosquitto	*mosq = NULL;
 char	*mosq_host = "omv";
 int		mosq_port = 1883;
 int		mosq_keepalive = 60;
+char	*mosq_user = (char*)NULL;
+char	*mosq_pass = (char*)NULL;
 bool	mosq_clean_session = true;
 
 #if 0
@@ -319,22 +322,24 @@ void sig_handler( int sig )
 
 int Usage(void)
 {
-	fprintf(stderr, "Usage: %s [-hvmpsStqC] [-P n] [-H s] [-c chan] [-g pin] [-x \"1,3-5\"] [-f \"1,3-5\"]\n", pgmName);
+	fprintf(stderr, "Usage: %s [-hvbmpsSteqC] [-P n] [-H s] [-U s] [-W s] [-c chan] [-g pin] [-x \"1,3-5\"] [-f \"1,3-5\"]\n", pgmName);
 	fprintf(stderr, "  -h	this message\n");
 	fprintf(stderr, "  -v	verbose\n");
-	fprintf(stderr, "  -W	disable shockBurst mode\n");
+	fprintf(stderr, "  -b	disable shockBurst mode\n");
 	fprintf(stderr, "  -m	print output in MQTT format\n");
 	fprintf(stderr, "  -p	print out payload in hex\n");
-	fprintf(stderr, "  -C	use 2 byte CRC; otherwise 1 byte");
 	fprintf(stderr, "  -s	set receive RF bit rate to 1M (default is 250kbps)\n");
 	fprintf(stderr, "  -S	set receive RF bit rate to 2M (default is 250kbps)\n");
 	fprintf(stderr, "  -t	print timestamp\n");
 	fprintf(stderr, "  -e	print timestamp in epoc time\n");
 	fprintf(stderr, "  -q	print packet sequence nbr\n");
-	fprintf(stderr, "  -P n	set MQTT port to 'n'\n");
-	fprintf(stderr, "  -H s	set MQTT host to 's'\n");
-	fprintf(stderr, "  -g n	use GPIO pin 'n' for IRQ input\n");
-	fprintf(stderr, "  -c n	set RF receive channel to 'n'\n");
+	fprintf(stderr, "  -C	use 2 byte CRC (default is 1 byte)\n");
+	fprintf(stderr, "  -P n	set MQTT port to 'n' (default is 1883)\n");
+	fprintf(stderr, "  -H s	set MQTT host to 's' (default is 'omv')\n");
+	fprintf(stderr, "  -U s	set MQTT username to 's' (default is not used)\n");
+	fprintf(stderr, "  -W s	set MQTT password to 's' (default is not used)\n");
+	fprintf(stderr, "  -g n	use GPIO pin 'n' for IRQ input (default is pin 5)\n");
+	fprintf(stderr, "  -c n	set RF receive channel to 'n' (default is 84)\n");
 	fprintf(stderr, "  -x s	exclude nodes: e.g. s = \"1,2,3-5,7\"\n");
 	fprintf(stderr, "  -f s	include nodes: e.g. s = \"1,2,3-5,7\"\n");
 	return 0;
@@ -364,7 +369,7 @@ int main(int argc, char *argv[])
 		case 'C':
 			en_CRC1 = 1;
 			break;
-		case 'W':
+		case 'b':
 			en_shockburst = 0;
 			break;
 		case 'p':
@@ -395,6 +400,12 @@ int main(int argc, char *argv[])
 			break;
 		case 'P':
 			mosq_port = atoi(optarg);
+			break;
+		case 'U':
+			mosq_user = optarg;
+			break;
+		case 'W':
+			mosq_pass = optarg;
 			break;
 		case 'c':
 			rf_chan = atoi(optarg);
@@ -434,6 +445,13 @@ int main(int argc, char *argv[])
 	}
   
 	mosquitto_log_callback_set(mosq, mosq_log_callback);
+
+	if (mosq_user != (char*)NULL) {
+		if (mosquitto_username_pw_set(mosq, mosq_user, mosq_pass)) {
+			fprintf(stderr, "Unable to set mosq username or password");
+			exit(1);
+		}
+	}
   
 	if (mosquitto_connect(mosq, mosq_host, mosq_port, mosq_keepalive)) {
 		fprintf(stderr, "Unable to connect.\n");

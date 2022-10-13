@@ -22,7 +22,8 @@ BCMLOC=/opt/vc/include/bcm_host.h
 
 ifneq ("$(wildcard $(BCMLOC))","")
 # The recommended compiler flags for the Raspberry Pi
-CCFLAGS=-Ofast -mfpu=vfp -mfloat-abi=hard -march=armv6zk -mtune=arm1176jzf-s
+CFLAGS=-Wall -Ofast -mfpu=vfp -mfloat-abi=hard -march=armv6zk -mtune=arm1176jzf-s
+LDLIBS=-lwiringPi -lmosquitto -lpthread
 endif
 
 # define all programs
@@ -32,7 +33,8 @@ PROGRAMS = lofi_mqtt
 all: ${PROGRAMS}
 
 lofi_mqtt: lofi_mqtt.c
-	gcc ${CCFLAGS} -Wall -lwiringPi -lmosquitto -lpthread -o $@ $@.c
+	gcc ${CFLAGS} -o $@ $^ ${LDLIBS}
+#	gcc ${CCFLAGS} -Wall -lwiringPi -lmosquitto -lpthread -o $@ $@.u -lwiringPi -lmosquitto -lpthread
 
 tags:
 	ctags lofi_mqtt.c 

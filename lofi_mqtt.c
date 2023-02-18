@@ -163,7 +163,7 @@ static int spiFd;
 
 
 struct	mosquitto	*mosq = NULL;
-char	*mosq_host = "omv";
+char	*mosq_host = "192.168.1.9";
 int		mosq_port = 1883;
 int		mosq_keepalive = 60;
 char	*mosq_user = (char*)NULL;
@@ -1058,7 +1058,7 @@ uint8_t nrfAvailable( uint8_t *pipe_num )
 	return nrfStatus;
 }
 
-#if 1
+#if 0
 int nrfRead( uint8_t *payload, int len )
 {
 	uint8_t spiBuf[33];
@@ -1070,18 +1070,18 @@ int nrfRead( uint8_t *payload, int len )
 
 	fifoStatus = nrfRegRead( NRF_FIFO_STATUS );
 	if (fifoStatus & 1) return -1;
-	printf("%02X ", fifoStatus);
+///	printf("%02X ", fifoStatus);
 //	rxPayloadLen = nrfReadRxPayloadLen();
 //	printf("rxPLen: %d ", rxPayloadLen);
-	nrfAvailable(&pipe);
-	printf("pipe: %d ", pipe); fflush(stdout);
+///	nrfAvailable(&pipe);
+///	printf("pipe: %d ", pipe); fflush(stdout);
 
 	spiBuf[0] = 0x61;
 	for (i = 1; i < len+1; i++)
 		spiBuf[i] = 0;
 	spiXfer(spiBuf, len+1);
-	fifoStatus = nrfRegRead( NRF_FIFO_STATUS );
-	printf("%02X ", fifoStatus);
+///	fifoStatus = nrfRegRead( NRF_FIFO_STATUS );
+///	printf("%02X ", fifoStatus);
 
 //nrfFlushRx();
 	nrfStatus = spiBuf[0];
@@ -1102,6 +1102,10 @@ int nrfRead( uint8_t *payload, int len )
 {
 	uint8_t spiBuf[33];
 	int i;
+	uint8_t fifoStatus;
+
+	fifoStatus = nrfRegRead( NRF_FIFO_STATUS );
+	if (fifoStatus & 1) return -1;
 
 	if (len > 32)
 		return -1;

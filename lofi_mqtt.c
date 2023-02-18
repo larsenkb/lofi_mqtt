@@ -148,9 +148,12 @@ int en_epoch = 0;
 int nrfIrq = NRFIRQ;
 int en_CRC1 = 0;
 uint8_t	nrf_config = 0x3C;
+// p0Addr[0] is LSByte which should be written first
 uint8_t p0Addr[] = { 0xE7, 0xE7, 0xE7, 0xE7, 0xE7 };
+// p15Addr[0] is LSByte which should be written first
 uint8_t p15Addr[] = { 0xC2, 0xC2, 0xC2, 0xC2, 0xC2 };
 uint8_t pxAddr[] = { 0xC3, 0xC4, 0xC5, 0xC6 };
+uint8_t nrfStatus;
 
 const char *swState[] = { "OPEN", "SHUT", " -- " };
 
@@ -227,14 +230,14 @@ PI_THREAD (http_server);
 void spiSetup( int speed );
 int spiXfer( uint8_t *buf, int cnt );
 uint8_t nrfRegRead( int reg );
-int nrfRegWrite( int reg, int val );
+uint8_t nrfRegWrite( int reg, int val );
 void nrfPrintDetails(void);
-int nrfAvailable( uint8_t *pipe_num );
-int nrfRegsWrite( int reg, uint8_t *buf, int len);
+uint8_t nrfAvailable( uint8_t *pipe_num );
+uint8_t nrfRegsWrite( int reg, uint8_t *buf, int len);
 int nrfRead( uint8_t *payload, int len );
-int nrfFlushTx( void );
-int nrfFlushRx( void );
-int nrfAddrRead( uint8_t reg, uint8_t *buf, int len );
+uint8_t nrfFlushTx( void );
+uint8_t nrfFlushRx( void );
+uint8_t nrfAddrRead( uint8_t reg, uint8_t *buf, int len );
 uint8_t nrfReadRxPayloadLen(void);
 void mosq_log_callback(struct mosquitto *mosq, void *userdata, int level, const char *str);
 
@@ -268,7 +271,7 @@ void nrfIntrHandler(void)
 //	uint8_t payLen __attribute__ ((unused));
 //	unsigned char payload[PAYLOAD_LEN];
 
-	nrfRegWrite( NRF_STATUS, 0x70);
+////	nrfRegWrite( NRF_STATUS, 0x70);
 	if (sem_post(&count_sem) == -1) {
 		perror("sem_post");
 	}
@@ -586,14 +589,10 @@ int main(int argc, char *argv[])
 
 int showPayload( uint8_t *payload )
 {
-#if 1
 	printf("Payload:");
 	for (int i = 0; i < PAYLOAD_LEN; i++)
 		printf(" %02X", payload[i]);
 	printf("\n");
-#else
-	printf("Payload: %02X %02X %02X\n", payload[0], payload[1], payload[2]);
-#endif
 	return 0;
 }
 
@@ -602,13 +601,12 @@ PI_THREAD (parse_payload)
 {
 	struct timespec ts;
 	struct tm mt;
-	//int i;
 	unsigned short val;
 	int val1;
+	int	rv;
 	uint8_t	sensorId;
 	uint8_t nodeId;
 	char tbuf[128];
-//	char sbuf[80];
 	char topic[40];
 	char topicVal[40];
 	int topicIdx = 0;
@@ -617,7 +615,6 @@ PI_THREAD (parse_payload)
 	uint8_t	payload[8];
 	int pkt_avail = false;
 	sensor_t *pl = (sensor_t *)payload;
-//	uint8_t payLen;
 
 
 	for (;;) {
@@ -628,8 +625,30 @@ PI_THREAD (parse_payload)
 			}
 		}
 
+		clock_gettime(CLOCK_REALTIME, &ts);
+		localtime_r(&ts.tv_sec, &mt);
 
-	nrfRead( payload, PAYLOAD_LEN );
+		rv = nrfRead( payload, PAYLOAD_LEN );
+
+		if (rv) {
+#if 0
+			if (printTime) {
+				//printf("%d  ", (int)ts.tv_sec);
+				if (en_epoch)
+					printf("%4d.%03d  ",
+						(int) (ts.tv_sec % 10000),
+						(int) (ts.tv_nsec/1000000)); // .%03ld
+				else
+					printf("%02d:%02d:%02d.%03d  ",
+						mt.tm_hour, mt.tm_min, mt.tm_sec,
+						(int) ((ts.tv_nsec/100000)+5)/10); // .%03ld
+			}
+
+			printf("Bad: %d\n", rv);
+#endif
+			pkt_avail = false;
+			continue;
+		}
 
 	//fprintf(stderr, "FIFO_STATUS: %02X\n", nrfRegRead(NRF_FIFO_STATUS));
 	//fflush(stderr);
@@ -645,19 +664,27 @@ PI_THREAD (parse_payload)
 //	sbuf[0] = '\0';
 	topic[0] = '\0';
 
-	clock_gettime(CLOCK_REALTIME, &ts);
-	localtime_r(&ts.tv_sec, &mt);
-	//printf("%02d:%02d:%02d\n", mt.tm_hour, mt.tm_min, mt.tm_sec);
-	
 
 //	nodeId = payload[0];
 	nodeId = pl->nodeId;
 
 	if (nodeId < 1 || nodeId >= maxNodes) {
+		if (printTime) {
+			//printf("%d  ", (int)ts.tv_sec);
+			if (en_epoch)
+				printf("%4d.%03d  ",
+					(int) (ts.tv_sec % 10000),
+					(int) (ts.tv_nsec/1000000)); // .%03ld
+			else
+				printf("%02d:%02d:%02d.%03d  ",
+					mt.tm_hour, mt.tm_min, mt.tm_sec,
+					(int) ((ts.tv_nsec/100000)+5)/10); // .%03ld
+		}
 		printf("Bad nodeId: %d\n", nodeId);
 		showPayload(payload);
 //		printf("Payload: %02X %02X %02X\n", payload[0], payload[1], payload[2]);
 		fflush(stdout);
+		pkt_avail = false;
 		continue;
 	}
 
@@ -690,12 +717,14 @@ PI_THREAD (parse_payload)
 	if (pl->sensorId == 0 || pl->sensorId > SENID_AHUMD) {
 		printf("Bad Sensor Id: %d %s\n", pl->sensorId, tbuf);
 		fflush(stdout);
+		pkt_avail = false;
 		continue;
 	}
 #else
 	if (payload[1] == 0) {
 		printf("%s\n", tbuf);
 		fflush(stdout);
+		pkt_avail = false;
 		continue;
 	}
 #endif
@@ -752,6 +781,7 @@ PI_THREAD (parse_payload)
 		if (!mqttStr) {
 			tbufIdx += snprintf(&tbuf[tbufIdx], 127-tbufIdx, "  SW2: %s", (payload[1] & 0x02) ? "OPEN" : "SHUT");
 		}
+		nodeStatus[nodeId].nbrMsgs++;
 		break;
 	case SENID_VCC:
 		topicIdx += snprintf(&topic[topicIdx], 127-topicIdx, "/vcc");
@@ -802,6 +832,7 @@ PI_THREAD (parse_payload)
 	default:
 		printf("Bad SensorId: %d\n", sensorId);
 		fflush(stdout);
+		pkt_avail = false;
 		continue;
 	}
 
@@ -860,6 +891,8 @@ PI_THREAD (parse_payload)
 
 #if 1
 		pkt_avail = ((nrfRegRead(NRF_FIFO_STATUS) & 1) == 0);
+#else
+		pkt_avail = (nrfRegRead( NRF_STATUS ) & 0x40) == 0x40;
 #endif
 	}
 	return 0;
@@ -922,51 +955,75 @@ int spiXfer(uint8_t *buf, int cnt)
 }
 #endif
 
-int nrfAddrRead( uint8_t reg, uint8_t *buf, int len )
+uint8_t nrfAddrRead( uint8_t reg, uint8_t *buf, int len )
 {
-	if (buf && len > 1) {
-		buf[0] = reg & 0x1f;
-		spiXfer(buf, len+1);
-		return buf[1];
-	}
-	return -1;
+	uint8_t spiBuf[24];
+
+	spiBuf[0] = reg & 0x1f;
+	spiXfer(spiBuf, len+1);
+	for (int i = 0; i < len; i++)
+		buf[i] = spiBuf[i+1];
+	nrfStatus = spiBuf[0];
+	return 0;
 }
 
 
-int nrfFlushRx( void )
+uint8_t nrfFlushRx( void )
 {
 	uint8_t spiBuf[1];
 
 	spiBuf[0] = 0xe2;
-	return spiXfer(spiBuf, 1);
+	spiXfer(spiBuf, 1);
+	nrfStatus = spiBuf[0];
+	return nrfStatus;
 }
 
-int nrfFlushTx( void )
+uint8_t nrfFlushTx( void )
 {
 	uint8_t spiBuf[1];
 
 	spiBuf[0] = 0xe1;
-	return spiXfer(spiBuf, 1);
+	spiXfer(spiBuf, 1);
+	nrfStatus = spiBuf[0];
+	return nrfStatus;
 }
 
-int nrfRegWrite( int reg, int val)
+uint8_t nrfRegWrite( int reg, int val)
 {
 	uint8_t spiBuf[2];
 
 	spiBuf[0] = 0x20 | (reg & 0x1f);
 	spiBuf[1] = val;
-	return spiXfer(spiBuf, 2);
+	spiXfer(spiBuf, 2);
+	nrfStatus = spiBuf[0];
+	return nrfStatus;
 }
 
-int nrfRegsWrite( int reg, uint8_t *buf, int len)
+#if 1
+uint8_t nrfRegsWrite( int reg, uint8_t *buf, int len)
+{
+	uint8_t spiBuf[20];
+
+	spiBuf[0] = 0x20 | (reg & 0x1f);
+	for (int i = 0; i < len; i++)
+		spiBuf[i+1] = buf[i];
+	spiXfer(spiBuf, len+1);
+	nrfStatus = spiBuf[0];
+	return nrfStatus;
+}
+#else
+uint8_t nrfRegsWrite( int reg, uint8_t *buf, int len)
 {
 	uint8_t spiBuf[20];
 
 	spiBuf[0] = 0x20 | (reg & 0x1f);
 	for (int i=4,j=1; i >= 0; i--,j++)
 		spiBuf[j] = buf[i];
-	return spiXfer(spiBuf, len+1);
+	spiXfer(spiBuf, len+1);
+	nrfStatus = spiBuf[0];
+	return nrfStatus;
 }
+#endif
 
 uint8_t nrfRegRead( int reg )
 {
@@ -975,6 +1032,7 @@ uint8_t nrfRegRead( int reg )
 	spiBuf[0] = reg & 0x1f;
 	spiBuf[1] = 0;
 	spiXfer(spiBuf, 2);
+	nrfStatus = spiBuf[0];
 	return spiBuf[1];
 }
 
@@ -985,23 +1043,61 @@ uint8_t nrfReadRxPayloadLen(void)
 	spiBuf[0] = 0x60;
 	spiBuf[1] = 0;
 	spiXfer(spiBuf, 2);
+	nrfStatus = spiBuf[0];
 	return spiBuf[1];
 }
 
-int nrfAvailable( uint8_t *pipe_num )
+uint8_t nrfAvailable( uint8_t *pipe_num )
 {
-	uint8_t status;
-
-	status = nrfRegRead( NRF_STATUS );
-	if (status & 0x40 ) {
+	nrfStatus = nrfRegRead( NRF_STATUS );
+	if (nrfStatus & 0x40 ) {
 		if ( pipe_num ) {
-			*pipe_num = ((status>>1) & 0x7);
+			*pipe_num = ((nrfStatus>>1) & 0x7);
 		}
-		return 1;
 	}
-	return 0;
+	return nrfStatus;
 }
 
+#if 1
+int nrfRead( uint8_t *payload, int len )
+{
+	uint8_t spiBuf[33];
+	int i;
+//	uint8_t rxPayloadLen;
+	uint8_t pipe = 0;
+	uint8_t fifoStatus;
+	int rv = 0;
+
+	fifoStatus = nrfRegRead( NRF_FIFO_STATUS );
+	if (fifoStatus & 1) return -1;
+	printf("%02X ", fifoStatus);
+//	rxPayloadLen = nrfReadRxPayloadLen();
+//	printf("rxPLen: %d ", rxPayloadLen);
+	nrfAvailable(&pipe);
+	printf("pipe: %d ", pipe); fflush(stdout);
+
+	spiBuf[0] = 0x61;
+	for (i = 1; i < len+1; i++)
+		spiBuf[i] = 0;
+	spiXfer(spiBuf, len+1);
+	fifoStatus = nrfRegRead( NRF_FIFO_STATUS );
+	printf("%02X ", fifoStatus);
+
+//nrfFlushRx();
+	nrfStatus = spiBuf[0];
+	if (payload)
+		for (i = 1; i < len+1; i++)
+			payload[i-1] = spiBuf[i];
+
+	nrfRegWrite( NRF_STATUS, 0x40 );
+	nrfStatus = nrfRegRead( NRF_STATUS );
+
+	if (nrfStatus & 0x40) {
+		printf("More Data: %02X ", spiBuf[1]); fflush(stdout);
+	}
+	return rv;
+}
+#else
 int nrfRead( uint8_t *payload, int len )
 {
 	uint8_t spiBuf[33];
@@ -1024,7 +1120,7 @@ int nrfRead( uint8_t *payload, int len )
 
 	return 0;
 }
-
+#endif
 
 void nrfPrintDetails(void)
 {
@@ -1040,10 +1136,10 @@ void nrfPrintDetails(void)
 
 	printf("STATUS: %02X\n", nrfRegRead( NRF_STATUS ));
 	nrfAddrRead( NRF_RX_ADDR_P0, buf, 5 );
-	printf("RX_ADDR_P0: %02X%02X%02X%02X%02X\n", buf[1], buf[2], buf[3], buf[4], buf[5]);
+	printf("RX_ADDR_P0: %02X%02X%02X%02X%02X\n", buf[4], buf[3], buf[2], buf[1], buf[0]);
 //	printf("RX_ADDR_P0: %02X\n", nrfRegRead( NRF_RX_ADDR_P0 ));
 	nrfAddrRead( NRF_RX_ADDR_P1, buf, 5 );
-	printf("RX_ADDR_P1: %02X%02X%02X%02X%02X\n", buf[1], buf[2], buf[3], buf[4], buf[5]);
+	printf("RX_ADDR_P1: %02X%02X%02X%02X%02X\n", buf[4], buf[3], buf[2], buf[1], buf[0]);
 //	printf("RX_ADDR_P1: %02X\n", nrfRegRead( NRF_RX_ADDR_P1 ));
 	printf("RX_ADDR_P2: %02X\n", nrfRegRead( NRF_RX_ADDR_P2 ));
 	printf("RX_ADDR_P3: %02X\n", nrfRegRead( NRF_RX_ADDR_P3 ));
@@ -1051,7 +1147,7 @@ void nrfPrintDetails(void)
 	printf("RX_ADDR_P5: %02X\n", nrfRegRead( NRF_RX_ADDR_P5 ));
 //	printf("TX_ADDR: %02X\n", nrfRegRead( NRF_TX_ADDR ));
 	nrfAddrRead( NRF_TX_ADDR, buf, 5 );
-	printf("TX_ADDR: %02X%02X%02X%02X%02X\n", buf[1], buf[2], buf[3], buf[4], buf[5]);
+	printf("TX_ADDR: %02X%02X%02X%02X%02X\n", buf[4], buf[3], buf[2], buf[1], buf[0]);
 
 //  print_byte_register(PSTR("RX_PW_P0-6"),RX_PW_P0,6);
 	printf("EN_AA: %02X\n", nrfRegRead( NRF_EN_AA ));

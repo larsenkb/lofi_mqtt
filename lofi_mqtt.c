@@ -161,7 +161,7 @@ const char *swState[] = { "OPEN", "SHUT", " -- " };
 static int spiFd;
 #endif
 
-
+bool	en_mqtt = true;
 struct	mosquitto	*mosq = NULL;
 char	*mosq_host = "192.168.1.9";
 int		mosq_port = 1883;
@@ -330,6 +330,7 @@ int Usage(void)
 	fprintf(stderr, "  -v	verbose\n");
 	fprintf(stderr, "  -b	disable shockBurst mode\n");
 	fprintf(stderr, "  -m	print output in MQTT format\n");
+	fprintf(stderr, "  -M	disable MQTT publishing\n");
 	fprintf(stderr, "  -p	print out payload in hex\n");
 	fprintf(stderr, "  -s	set receive RF bit rate to 1M (default is 250kbps)\n");
 	fprintf(stderr, "  -S	set receive RF bit rate to 2M (default is 250kbps)\n");
@@ -360,7 +361,7 @@ int main(int argc, char *argv[])
 
 	pgmName = basename(argv[0]);
 
-	while ((opt = getopt(argc, argv, "hvCWmpsSteqc:x:f:g:P:H:")) != -1) {
+	while ((opt = getopt(argc, argv, "hvCWMmpsSteqc:x:f:g:P:H:")) != -1) {
 		switch (opt) {
 		case 'h':
 			Usage();
@@ -368,6 +369,9 @@ int main(int argc, char *argv[])
 			break;
 		case 'm':
 			mqttStr = 1;
+			break;
+		case 'M':
+			en_mqtt = false;
 			break;
 		case 'C':
 			en_CRC1 = 1;
@@ -440,32 +444,34 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "Can't catch SIGINT\n");
 
     // setup mqtt for publishing
-	mosquitto_lib_init();
-	mosq = mosquitto_new(NULL, mosq_clean_session, NULL);
-	if (!mosq) {
-		fprintf(stderr, "Error: Out of memory.\n");
-		exit(1);
-	}
+	if (en_mqtt) {
+		mosquitto_lib_init();
+		mosq = mosquitto_new(NULL, mosq_clean_session, NULL);
+		if (!mosq) {
+			fprintf(stderr, "Error: Out of memory.\n");
+			exit(1);
+		}
   
-	mosquitto_log_callback_set(mosq, mosq_log_callback);
+		mosquitto_log_callback_set(mosq, mosq_log_callback);
 
-	if (mosq_user != (char*)NULL) {
-		if (mosquitto_username_pw_set(mosq, mosq_user, mosq_pass)) {
-			fprintf(stderr, "Unable to set mosq username or password");
+		if (mosq_user != (char*)NULL) {
+			if (mosquitto_username_pw_set(mosq, mosq_user, mosq_pass)) {
+				fprintf(stderr, "Unable to set mosq username or password");
+				exit(1);
+			}
+		}
+  
+		if (mosquitto_connect(mosq, mosq_host, mosq_port, mosq_keepalive)) {
+			fprintf(stderr, "Unable to connect.\n");
+			exit(1);
+		}
+		int loop = mosquitto_loop_start(mosq);
+		if (loop != MOSQ_ERR_SUCCESS) {
+			fprintf(stderr, "Unable to start loop: %i\n", loop);
 			exit(1);
 		}
 	}
-  
-	if (mosquitto_connect(mosq, mosq_host, mosq_port, mosq_keepalive)) {
-		fprintf(stderr, "Unable to connect.\n");
-		exit(1);
-	}
-	int loop = mosquitto_loop_start(mosq);
-	if (loop != MOSQ_ERR_SUCCESS) {
-		fprintf(stderr, "Unable to start loop: %i\n", loop);
-		exit(1);
-	}
-  
+
 	wiringPiSetup();
 
 	pinMode(nrfCSN, OUTPUT);
@@ -836,7 +842,9 @@ PI_THREAD (parse_payload)
 		continue;
 	}
 
-	mosquitto_publish(mosq, NULL, topic, strlen(topicVal), topicVal, 0, 0);
+	if (en_mqtt) {
+		mosquitto_publish(mosq, NULL, topic, strlen(topicVal), topicVal, 0, 0);
+	}
 
 	if (!mqttStr) {
 		printf("%s", tbuf);

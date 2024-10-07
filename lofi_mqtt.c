@@ -70,6 +70,7 @@ typedef struct {
 	float	vcc;
 	float	atemp;
 	float	ahumd;
+	char	update[20];
 } node_status_t;
 
 
@@ -631,6 +632,7 @@ PI_THREAD (parse_payload)
 			}
 		}
 
+
 		clock_gettime(CLOCK_REALTIME, &ts);
 		localtime_r(&ts.tv_sec, &mt);
 
@@ -694,6 +696,9 @@ PI_THREAD (parse_payload)
 		continue;
 	}
 
+	time_t ttt = time(NULL);
+	struct tm *tmtm = localtime(&ttt);
+	strftime(nodeStatus[nodeId].update, sizeof(nodeStatus[nodeId].update), "%d%b%g-%R", tmtm);
 
 //	topicIdx = snprintf(&topic[topicIdx], 127-topicIdx, "lofi/%s", nodeMap[nodeId]);
 	topicIdx = snprintf(&topic[topicIdx], 127-topicIdx, "lofi/node/%d", nodeId);
@@ -1243,7 +1248,7 @@ PI_THREAD (http_server)
         
         /*valread = */ read( new_socket , buffer, 30000);
 
-		sprintf(tbuffer, "Node  #Msgs    sw1     Vcc    aTemp   aHumd\n");
+		sprintf(tbuffer, "Node  #Msgs    sw1     Vcc    aTemp   aHumd  Last Update\n");
 		for (int i = 1; i < maxNodes; i++) {
 			if (nodeStatus[i].nbrMsgs) {
 				strcpy(vcc, "      ");
@@ -1256,8 +1261,8 @@ PI_THREAD (http_server)
 				if (nodeStatus[i].ahumd >= 0.0)
 					sprintf(ahumd, "%6.2f", nodeStatus[i].ahumd);
 
-				sprintf(tcontent, " %2d  %6d    %s  %s  %s  %s\n", i, nodeStatus[i].nbrMsgs,
-						swState[nodeStatus[i].sw1], vcc, atemp, ahumd);
+				sprintf(tcontent, " %2d  %6d    %s  %s  %s  %s  %s\n", i, nodeStatus[i].nbrMsgs,
+						swState[nodeStatus[i].sw1], vcc, atemp, ahumd, nodeStatus[i].update);
 				strcat(tbuffer, tcontent);
 			}
 		}

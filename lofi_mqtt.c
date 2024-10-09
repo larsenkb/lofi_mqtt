@@ -632,7 +632,6 @@ PI_THREAD (parse_payload)
 			}
 		}
 
-
 		clock_gettime(CLOCK_REALTIME, &ts);
 		localtime_r(&ts.tv_sec, &mt);
 
